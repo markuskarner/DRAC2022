@@ -25,8 +25,7 @@ if __name__ == "__main__":
     elif TASK == 'c':
         base_path = "/Users/markus/Downloads/DRAC2022/C. Diabetic Retinopathy Grading/"
         x_train_raw_path = base_path + "/1. Original Images/a. Training Set/"
-        y_train_raw_path = base_path + "/2. Groundtruths/" \
-                                         "a. DRAC2022_ Diabetic Retinopathy Grading_Training Labels.csv"
+        y_train_raw_path = base_path + "/2. Groundtruths/a. DRAC2022_ Diabetic Retinopathy Grading_Training Labels.csv"
     else:
         raise Exception("Only Tasks a,b or c allowed!")
 
@@ -68,6 +67,8 @@ if __name__ == "__main__":
         with wandb.init():
             config = wandb.config
 
+            torch.manual_seed(7)
+
             model = init_model(config.dropout)
             device = torch.device("mps")
             model.to(device)
@@ -86,8 +87,8 @@ if __name__ == "__main__":
                 local_errs = update(model, dataloader_train, ce, opt)
                 local_val_errs = evaluate(model, dataloader_valid, ce)
 
-                wandb.log({"train error": sum(local_errs) / len(local_errs),
-                           "validation error": sum(local_val_errs) / len(local_val_errs)})
+                wandb.log({"train/error": sum(local_errs) / len(local_errs),
+                           "validation/error": sum(local_val_errs) / len(local_val_errs)})
 
 
     continue_sweep_id = None

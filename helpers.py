@@ -1,4 +1,5 @@
 import os
+
 import torch
 import numpy as np
 import pandas as pd
@@ -9,7 +10,7 @@ from PIL import Image
 from torchvision import models
 from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from torch import nn, optim
-from sklearn.metrics import balanced_accuracy_score, roc_auc_score
+from sklearn.metrics import roc_auc_score
 
 from DRAC2022_zhuanjiao.evaluation.metric_classification import confusion_matrix, histogram, quadratic_weighted_kappa
 
@@ -223,10 +224,18 @@ def prepare_classification_dataset(base_path: str,
                                    batch_size: int,
                                    num_workers: int = 4):
 
+    def seed_worker(worker_id):
+        worker_seed = torch.initial_seed() % 2 ** 32
+        np.random.seed(worker_seed)
+        np.seed(worker_seed)
+
+    g = torch.Generator()
+    g.manual_seed(7)
+
     transform = prepare_transform(base_path, image_folder, False)
 
     data_train_valid = DracClassificationDatasetTrain(image_folder, labels_csv, transform["train"])
-    data_train, data_valid = torch.utils.data.random_split(data_train_valid, [600, 65])
+    data_train, data_valid = torch.utils.data.random_split(data_train_valid, [600, 65], generator=g)
 
     # Weighted sampling for train data
     targets = pd.read_csv(labels_csv)
@@ -242,7 +251,9 @@ def prepare_classification_dataset(base_path: str,
     train_sampler = WeightedRandomSampler(train_samples_weight, len(train_samples_weight))
 
     # dataloader_train = DataLoader(data_train, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-    dataloader_train = DataLoader(data_train, batch_size=batch_size, num_workers=num_workers, sampler=train_sampler)
-    dataloader_valid = DataLoader(data_valid, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    dataloader_train = DataLoader(data_train, batch_size=batch_size, num_workers=num_workers, sampler=train_sampler,
+                                  worker_init_fn=seed_worker, generator=g)
+    dataloader_valid = DataLoader(data_valid, batch_size=batch_size, shuffle=True, num_workers=num_workers,
+                                  worker_init_fn=seed_worker, generator=g)
 
     return dataloader_train, dataloader_valid
