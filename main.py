@@ -11,6 +11,7 @@ from helpers import init_model, update, evaluate, prepare_classification_dataset
 if __name__ == "__main__":
 
     TASK = 'b'  # for now only b and c work (classification)
+    TASK_DESC = "Classification B Quality"  # for logging only
 
     # Prepare paths
     if TASK == 'a':
@@ -34,15 +35,15 @@ if __name__ == "__main__":
     sweep_config = {
         "method": "random",
         "metric": {
-            "name": "accuracy",
+            "name": "quadratic weighted kappa",
             "goal": "maximize"
         },
         "parameters": {
             "model": {
-                "values": ["ResNet50"]  # TODO change to ConvNeXt after changing init model
+                "values": ["ConvNeXt_tiny"]
             },
             "task": {
-                "values": ["Classification B Quality"]
+                "values": [TASK_DESC]
             },
             "epochs": {
                 "values": [20, 30]

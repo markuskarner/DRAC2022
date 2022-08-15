@@ -9,7 +9,9 @@ from PIL import Image
 from torchvision import models
 from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from torch import nn, optim
-from sklearn.metrics import balanced_accuracy_score
+from sklearn.metrics import balanced_accuracy_score, roc_auc_score
+
+from DRAC2022_zhuanjiao.evaluation.metric_classification import confusion_matrix, histogram, quadratic_weighted_kappa
 
 
 class DracClassificationDatasetTrain(Dataset):
@@ -105,8 +107,8 @@ class DracClassificationModel(nn.Module):
 
 
 def init_model(dropout: float = 0.):
-    # TODO replace with convNext
-    resnet50 = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
+    # TODO try bigger convNeXt models as well
+    resnet50 = models.convnext_tiny(weights=models.convnext_tiny.DEFAULT)
 
     return DracClassificationModel(resnet50,
                                    flattened_size=1000,
@@ -126,9 +128,16 @@ def evaluate(network: nn.Module, data: DataLoader, metric: callable) -> list:
         y_hat = network(x)
         errors.append(metric(y_hat, y).item())
 
-        # TODO add logging for the necessary metrics of DRAC2022
-        acc = balanced_accuracy_score(y.cpu(), torch.argmax(y_hat, dim=1).cpu().detach().numpy())
-        wandb.log({"validation accuracy": acc})
+        # acc = balanced_accuracy_score(y.cpu(), torch.argmax(y_hat, dim=1).cpu().detach().numpy())
+        # wandb.log({"validation accuracy": acc})
+
+        y_scores = nn.functional.softmax(y_hat, 1)
+
+        kw = quadratic_weighted_kappa(y.cpu(), torch.argmax(y_hat, dim=1).cpu().detach().numpy())
+        wandb.log({"validation/quadratic weighted kappa": kw})
+
+        auc = roc_auc_score(y.cpu(), y_scores, average="macro", multi_class='ovo')
+        wandb.log({"validation/macro-AUC-ovo": auc})
 
     return errors
 
@@ -152,9 +161,16 @@ def update(network: nn.Module, data: DataLoader, loss: nn.Module,
 
         errors.append(output.item())
 
-        # TODO add logging for the necessary metrics of DRAC2022
-        acc = balanced_accuracy_score(y.cpu(), torch.argmax(y_hat, dim=1).cpu().detach().numpy())
-        wandb.log({"train accuracy": acc})
+        # balanced_acc = balanced_accuracy_score(y.cpu(), torch.argmax(y_hat, dim=1).cpu().detach().numpy())
+        # wandb.log({"train/balanced accuracy": balanced_acc})
+
+        y_scores = nn.functional.softmax(y_hat, 1)
+
+        kw = quadratic_weighted_kappa(y.cpu(), torch.argmax(y_hat, dim=1).cpu().detach().numpy())
+        wandb.log({"train/quadratic weighted kappa": kw})
+
+        auc = roc_auc_score(y.cpu(), y_scores, average="macro", multi_class='ovo')
+        wandb.log({"train/macro-AUC-ovo": auc})
 
     return errors
 
@@ -188,7 +204,7 @@ def prepare_transform(base_path: str, image_folder: str, calculate_mean_and_std:
             [transforms.ToTensor(),
              transforms.Resize([256, 256]),
              transforms.RandomCrop(224),
-             transforms.RandomHorizontalFlip(),
+             transforms.RandomVerticalFlip(),
              transforms.Normalize(mean=mean,
                                   std=std)]),
         "test": transforms.Compose(
