@@ -1,0 +1,16 @@
+wandb_version: 1
+
+batch_size:
+  value: 128
+dropout:
+  value: 0.4
+epochs:
+  value: 30
+learning_rate:
+  value: 0.0963270692761856
+model:
+  value: ResNet50
+task:
+  value: Classification B Quality
+weight_decay:
+  value: 0.005

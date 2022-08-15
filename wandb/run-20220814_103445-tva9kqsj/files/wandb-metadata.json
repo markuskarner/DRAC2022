@@ -1,0 +1,16 @@
+{
+    "os": "macOS-12.4-arm64-arm-64bit",
+    "python": "3.9.12",
+    "heartbeatAt": "2022-08-14T08:34:47.197655",
+    "startedAt": "2022-08-14T08:34:45.601002",
+    "docker": null,
+    "cpu_count": 8,
+    "cuda": null,
+    "args": [],
+    "state": "running",
+    "program": "/Users/markus/PycharmProjects/DRAC2022/main.py",
+    "codePath": "main.py",
+    "host": "MacBook-Pro-von-Markus.local",
+    "username": "markus",
+    "executable": "/Users/markus/miniconda3/envs/drac22/bin/python"
+}
