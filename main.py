@@ -64,7 +64,7 @@ if __name__ == "__main__":
     }
 
     def train():
-        with wandb.init(mode="disabled"):  # TODO switch back to enabled after debugging
+        with wandb.init():  # use wandb.init(mode="disabled") for debugging
             config = wandb.config
 
             torch.manual_seed(7)
@@ -96,7 +96,7 @@ if __name__ == "__main__":
     if not continue_sweep_id:
         sweep_id = wandb.sweep(sweep_config, entity="markuskarner", project="DRAC2022")
 
-        count = 1  # number of runs to execute
+        count = 10  # number of runs to execute
         wandb.agent(sweep_id, function=train, count=count)
     else:
         wandb.agent(continue_sweep_id, function=train, project="DRAC2022")
