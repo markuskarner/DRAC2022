@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import torchvision.transforms as transforms
 import wandb
+import random
 
 from PIL import Image
 from torchvision import models
@@ -13,6 +14,12 @@ from torch import nn, optim
 from sklearn.metrics import roc_auc_score
 
 from DRAC2022_zhuanjiao.evaluation.metric_classification import confusion_matrix, histogram, quadratic_weighted_kappa
+
+
+def seed_worker(worker_id):
+    worker_seed = torch.initial_seed() % 2 ** 32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
 
 
 class DracClassificationDatasetTrain(Dataset):
@@ -107,11 +114,16 @@ class DracClassificationModel(nn.Module):
         return x
 
 
-def init_model(dropout: float = 0.):
+def init_model(model: str, dropout: float = 0.):
     # TODO try bigger convNeXt models as well
-    resnet50 = models.convnext_tiny(weights=models.convnext_tiny.DEFAULT)
+    if model == 'ResNet50':
+        _model = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
+    elif model == 'ConvNeXt_tiny':
+        _model = models.convnext_tiny(weights=models.ConvNeXt_Tiny_Weights.DEFAULT)
+    else:
+        raise Exception("Only ResNet50 and ConvNeXt_tiny allowed!")
 
-    return DracClassificationModel(resnet50,
+    return DracClassificationModel(_model,
                                    flattened_size=1000,
                                    dropout=dropout)
 
@@ -139,7 +151,7 @@ def evaluate(network: nn.Module, data: DataLoader, metric: callable) -> list:
 
         y_array = np.hstack((y_array, y.cpu()), axis=None)
         y_hat_array = np.hstack((y_hat_array, torch.argmax(y_hat, dim=1).cpu().detach().numpy()), axis=None)
-        y_scores_array = np.vstack((y_scores_array, y_scores), axis=None)
+        y_scores_array = np.vstack((y_scores_array, y_scores))
 
         kw = quadratic_weighted_kappa(y.cpu(), torch.argmax(y_hat, dim=1).cpu().detach().numpy())
         wandb.log({"validation/batch quadratic weighted kappa": kw})
@@ -161,6 +173,9 @@ def update(network: nn.Module, data: DataLoader, loss: nn.Module,
            opt: optim.Optimizer) -> list:
     network.train()
     errors = []
+    y_array = None
+    y_hat_array = None
+    y_scores_array = None
 
     device = next(network.parameters()).device
 
@@ -177,14 +192,23 @@ def update(network: nn.Module, data: DataLoader, loss: nn.Module,
 
         # balanced_acc = balanced_accuracy_score(y.cpu(), torch.argmax(y_hat, dim=1).cpu().detach().numpy())
         # wandb.log({"train/balanced accuracy": balanced_acc})
-
         y_scores = nn.functional.softmax(y_hat, 1)
 
+        y_array = np.hstack((y_array, y.cpu()), axis=None)
+        y_hat_array = np.hstack((y_hat_array, torch.argmax(y_hat, dim=1).cpu().detach().numpy()), axis=None)
+        y_scores_array = np.vstack((y_scores_array, y_scores))
+
         kw = quadratic_weighted_kappa(y.cpu(), torch.argmax(y_hat, dim=1).cpu().detach().numpy())
-        wandb.log({"train/quadratic weighted kappa": kw})
+        wandb.log({"train/batch quadratic weighted kappa": kw})
 
         auc = roc_auc_score(y.cpu(), y_scores, average="macro", multi_class='ovo')
-        wandb.log({"train/macro-AUC-ovo": auc})
+        wandb.log({"train/batch macro-AUC-ovo": auc})
+
+    kw_epoch = quadratic_weighted_kappa(y_array, y_hat_array)
+    wandb.log({"train/epoch quadratic weighted kappa": kw_epoch})
+
+    auc_epoch = roc_auc_score(y_array, y_scores_array, average="macro", multi_class='ovo')
+    wandb.log({"train/epoch macro-AUC-ovo": auc_epoch})
 
     return errors
 
@@ -236,11 +260,6 @@ def prepare_classification_dataset(base_path: str,
                                    labels_csv: str,
                                    batch_size: int,
                                    num_workers: int = 4):
-
-    def seed_worker(worker_id):
-        worker_seed = torch.initial_seed() % 2 ** 32
-        np.random.seed(worker_seed)
-        np.seed(worker_seed)
 
     g = torch.Generator()
     g.manual_seed(7)

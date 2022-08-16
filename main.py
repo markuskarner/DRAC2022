@@ -39,7 +39,7 @@ if __name__ == "__main__":
         },
         "parameters": {
             "model": {
-                "values": ["ConvNeXt_tiny"]
+                "values": ["ResNet50"]  # ConvNeXt_tiny
             },
             "task": {
                 "values": [TASK_DESC]
@@ -64,12 +64,12 @@ if __name__ == "__main__":
     }
 
     def train():
-        with wandb.init():
+        with wandb.init(mode="disabled"):  # TODO switch back to enabled after debugging
             config = wandb.config
 
             torch.manual_seed(7)
 
-            model = init_model(config.dropout)
+            model = init_model(config.model, config.dropout)
             device = torch.device("mps")
             model.to(device)
 
@@ -96,7 +96,7 @@ if __name__ == "__main__":
     if not continue_sweep_id:
         sweep_id = wandb.sweep(sweep_config, entity="markuskarner", project="DRAC2022")
 
-        count = 10  # number of runs to execute
+        count = 1  # number of runs to execute
         wandb.agent(sweep_id, function=train, count=count)
     else:
         wandb.agent(continue_sweep_id, function=train, project="DRAC2022")
