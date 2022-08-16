@@ -120,6 +120,9 @@ def init_model(dropout: float = 0.):
 def evaluate(network: nn.Module, data: DataLoader, metric: callable) -> list:
     network.eval()
     errors = []
+    y_array = None
+    y_hat_array = None
+    y_scores_array = None
 
     device = next(network.parameters()).device
 
@@ -132,13 +135,23 @@ def evaluate(network: nn.Module, data: DataLoader, metric: callable) -> list:
         # acc = balanced_accuracy_score(y.cpu(), torch.argmax(y_hat, dim=1).cpu().detach().numpy())
         # wandb.log({"validation accuracy": acc})
 
-        y_scores = nn.functional.softmax(y_hat, 1)
+        y_scores = nn.functional.softmax(y_hat, 1).cpu().detach().numpy()
+
+        y_array = np.hstack((y_array, y.cpu()), axis=None)
+        y_hat_array = np.hstack((y_hat_array, torch.argmax(y_hat, dim=1).cpu().detach().numpy()), axis=None)
+        y_scores_array = np.vstack((y_scores_array, y_scores), axis=None)
 
         kw = quadratic_weighted_kappa(y.cpu(), torch.argmax(y_hat, dim=1).cpu().detach().numpy())
-        wandb.log({"validation/quadratic weighted kappa": kw})
+        wandb.log({"validation/batch quadratic weighted kappa": kw})
 
         auc = roc_auc_score(y.cpu(), y_scores, average="macro", multi_class='ovo')
-        wandb.log({"validation/macro-AUC-ovo": auc})
+        wandb.log({"validation/batch macro-AUC-ovo": auc})
+
+    kw_epoch = quadratic_weighted_kappa(y_array, y_hat_array)
+    wandb.log({"validation/epoch quadratic weighted kappa": kw_epoch})
+
+    auc_epoch = roc_auc_score(y_array, y_scores_array, average="macro", multi_class='ovo')
+    wandb.log({"validation/epoch macro-AUC-ovo": auc_epoch})
 
     return errors
 
