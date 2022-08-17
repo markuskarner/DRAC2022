@@ -165,6 +165,11 @@ def evaluate(network: nn.Module, data: DataLoader, metric: callable) -> list:
     auc_epoch = roc_auc_score(np.hstack(y_array), np.vstack(y_scores_array), average="macro", multi_class='ovo')
     wandb.log({"validation/epoch macro-AUC-ovo": auc_epoch})
 
+    wandb.log({"validation/conf_mat": wandb.plot.confusion_matrix(probs=None,
+                                                                  y_true=np.hstack(y_array),
+                                                                  preds=np.hstack(y_hat_array),
+                                                                  class_names=["1", "2", "3"])})
+
     return errors
 
 
@@ -206,12 +211,14 @@ def update(network: nn.Module, data: DataLoader, loss: nn.Module,
 
     kw_epoch = quadratic_weighted_kappa(np.hstack(y_array), np.hstack(y_hat_array))
     wandb.log({"train/epoch quadratic weighted kappa": kw_epoch})
-    #print("before epoch auc")
-    #print(np.hstack(y_array).shape)
-    #print(np.vstack(y_scores_array).shape)
+
     auc_epoch = roc_auc_score(np.hstack(y_array), np.vstack(y_scores_array), average="macro", multi_class='ovo')
     wandb.log({"train/epoch macro-AUC-ovo": auc_epoch})
-    #print("after epoch auc")
+
+    wandb.log({"train/conf_mat": wandb.plot.confusion_matrix(probs=None,
+                                                             y_true=np.hstack(y_array),
+                                                             preds=np.hstack(y_hat_array),
+                                                             class_names=["1", "2", "3"])})
 
     return errors
 
