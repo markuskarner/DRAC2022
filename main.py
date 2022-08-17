@@ -5,7 +5,6 @@ import wandb
 from torch import nn
 from torch import optim
 
-
 from helpers import init_model, update, evaluate, prepare_classification_dataset
 
 if __name__ == "__main__":
@@ -39,7 +38,7 @@ if __name__ == "__main__":
         },
         "parameters": {
             "model": {
-                "values": ["ResNet50"]  # ConvNeXt_tiny
+                "values": ["ResNet50"]  # ConvNeXt_tiny or ResNet50
             },
             "task": {
                 "values": [TASK_DESC]
@@ -49,7 +48,7 @@ if __name__ == "__main__":
             },
             "learning_rate": {
                 "min": 0.00001,
-                "max": 0.1
+                "max": 0.001  # 0.1
             },
             "weight_decay": {
                 "values": [0.0005, 0.005, 0.05]
@@ -63,8 +62,9 @@ if __name__ == "__main__":
         }
     }
 
+
     def train():
-        with wandb.init():  # use wandb.init(mode="disabled") for debugging
+        with wandb.init():
             config = wandb.config
 
             torch.manual_seed(7)
@@ -96,7 +96,7 @@ if __name__ == "__main__":
     if not continue_sweep_id:
         sweep_id = wandb.sweep(sweep_config, entity="markuskarner", project="DRAC2022")
 
-        count = 10  # number of runs to execute
+        count = 1  # number of runs to execute
         wandb.agent(sweep_id, function=train, count=count)
     else:
         wandb.agent(continue_sweep_id, function=train, project="DRAC2022")

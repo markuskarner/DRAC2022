@@ -78,15 +78,15 @@ class DracClassificationModel(nn.Module):
 
     # TODO down sample input images
 
-    def __init__(self, features: nn.Module,
+    def __init__(self, model: nn.Module,
                  num_classes: int = 3,
                  flattened_size: int = 1000,
                  dropout: float = 0.):
         """
         Parameters
         ----------
-        features : nn.Module
-            The convolutional part of a pretrained network.
+        model : nn.Module
+            A pretrained network.
         num_classes : int
             The number of output classes in the data.
         flattened_size: int
@@ -97,7 +97,7 @@ class DracClassificationModel(nn.Module):
         # self.downsampler = nn.Sequential(
         #     nn.Conv2d()
         # )
-        self.features = features
+        self.model = model
         self.classifier = nn.Sequential(
             nn.Dropout(dropout),
             nn.Linear(in_features=flattened_size, out_features=num_classes)
@@ -109,7 +109,7 @@ class DracClassificationModel(nn.Module):
                 nn.init.kaiming_normal_(m.weight)
 
     def forward(self, x):
-        x = self.features(x)
+        x = self.model(x)
         x = self.classifier(x)
         return x
 
