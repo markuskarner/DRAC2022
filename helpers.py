@@ -76,8 +76,6 @@ class DracClassificationModel(nn.Module):
     for classifying images from the Drac2022 dataset.
     """
 
-    # TODO down sample input images
-
     def __init__(self, model: nn.Module,
                  num_classes: int = 3,
                  flattened_size: int = 1000,
@@ -94,9 +92,6 @@ class DracClassificationModel(nn.Module):
         """
         super(DracClassificationModel, self).__init__()
 
-        # self.downsampler = nn.Sequential(
-        #     nn.Conv2d()
-        # )
         self.model = model
         self.classifier = nn.Sequential(
             nn.Dropout(dropout),
@@ -144,20 +139,11 @@ def evaluate(network: nn.Module, data: DataLoader, metric: callable) -> list:
         y_hat = network(x)
         errors.append(metric(y_hat, y).item())
 
-        # acc = balanced_accuracy_score(y.cpu(), torch.argmax(y_hat, dim=1).cpu().detach().numpy())
-        # wandb.log({"validation accuracy": acc})
-
         y_scores = nn.functional.softmax(y_hat, 1).cpu().detach().numpy()
 
         y_array.append(y.cpu().detach().numpy())
         y_hat_array.append(torch.argmax(y_hat, dim=1).cpu().detach().numpy())
         y_scores_array.append(y_scores)
-
-        #kw = quadratic_weighted_kappa(y.cpu().detach().numpy(), torch.argmax(y_hat, dim=1).cpu().detach().numpy())
-        #wandb.log({"validation/batch quadratic weighted kappa": kw})
-
-        #auc = roc_auc_score(y.cpu().detach().numpy(), y_scores, average="macro", multi_class='ovo')
-        #wandb.log({"validation/batch macro-AUC-ovo": auc})
 
     kw_epoch = quadratic_weighted_kappa(np.hstack(y_array), np.hstack(y_hat_array))
     wandb.log({"validation/epoch quadratic weighted kappa": kw_epoch})
@@ -195,19 +181,11 @@ def update(network: nn.Module, data: DataLoader, loss: nn.Module,
 
         errors.append(output.item())
 
-        # balanced_acc = balanced_accuracy_score(y.cpu(), torch.argmax(y_hat, dim=1).cpu().detach().numpy())
-        # wandb.log({"train/balanced accuracy": balanced_acc})
         y_scores = nn.functional.softmax(y_hat, 1).cpu().detach().numpy()
 
         y_array.append(y.cpu().detach().numpy())
         y_hat_array.append(torch.argmax(y_hat, dim=1).cpu().detach().numpy())
         y_scores_array.append(y_scores)
-
-        #kw = quadratic_weighted_kappa(y.cpu().detach().numpy(), torch.argmax(y_hat, dim=1).cpu().detach().numpy())
-        #wandb.log({"train/batch quadratic weighted kappa": kw})
-
-        #auc = roc_auc_score(y.cpu().detach().numpy(), y_scores, average="macro", multi_class='ovo')
-        #wandb.log({"train/batch macro-AUC-ovo": auc})
 
     kw_epoch = quadratic_weighted_kappa(np.hstack(y_array), np.hstack(y_hat_array))
     wandb.log({"train/epoch quadratic weighted kappa": kw_epoch})
@@ -269,7 +247,8 @@ def prepare_classification_dataset(base_path: str,
                                    image_folder: str,
                                    labels_csv: str,
                                    batch_size: int,
-                                   num_workers: int = 4):
+                                   num_workers: int = 4,
+                                   task: str = 'b'):
 
     g = torch.Generator()
     g.manual_seed(7)
@@ -277,14 +256,20 @@ def prepare_classification_dataset(base_path: str,
     transform = prepare_transform(base_path, image_folder, False)
 
     data_train_valid = DracClassificationDatasetTrain(image_folder, labels_csv, transform["train"])
-    data_train, data_valid = torch.utils.data.random_split(data_train_valid, [600, 65], generator=g)
+
+    if task == 'b':
+        data_train, data_valid = torch.utils.data.random_split(data_train_valid, [600, 65], generator=g)
+    elif task == 'c':
+        data_train, data_valid = torch.utils.data.random_split(data_train_valid, [560, 51], generator=g)
+    else:
+        raise Exception("Only Tasks a or b allowed!")
 
     # Weighted sampling for train data
     targets = pd.read_csv(labels_csv)
     train_target = targets.iloc[data_train.indices, 1]
     train_class_sample_count = np.array(
         [len(np.where(train_target == t)[0]) for t in np.unique(train_target)])
-    #print(train_class_sample_count)
+
     train_weight = 1. / train_class_sample_count
 
     train_samples_weight = np.array([train_weight[t] for t in train_target])
@@ -293,7 +278,6 @@ def prepare_classification_dataset(base_path: str,
 
     train_sampler = WeightedRandomSampler(train_samples_weight, len(train_samples_weight))
 
-    # dataloader_train = DataLoader(data_train, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     dataloader_train = DataLoader(data_train, batch_size=batch_size, num_workers=num_workers, sampler=train_sampler,
                                   worker_init_fn=seed_worker, generator=g)
     dataloader_valid = DataLoader(data_valid, batch_size=batch_size, shuffle=True, num_workers=num_workers,

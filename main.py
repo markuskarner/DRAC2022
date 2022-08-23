@@ -11,18 +11,19 @@ if __name__ == "__main__":
 
     TASK = 'b'  # for now only b and c work (classification)
     TASK_DESC = "Classification B Quality"  # for logging only
+    DATA_ROOT = "/system/user/publicdata/dracch/"  # "/Users/markus/Downloads/DRAC2022/"
 
     # Prepare paths
     if TASK == 'a':
-        base_path = "/Users/markus/Downloads/DRAC2022/A. Segmentation/"
+        base_path = DATA_ROOT + "A. Segmentation/"
         x_train_raw_path = base_path + "/1. Original Images/a. Training Set/"
         y_train_raw_path = base_path + "/2. Groundtruths/a. Training Set/"
     elif TASK == 'b':
-        base_path = "/Users/markus/Downloads/DRAC2022/B. Image Quality Assessment/"
+        base_path = DATA_ROOT + "B. Image Quality Assessment/"
         x_train_raw_path = base_path + "/1. Original Images/a. Training Set/"
         y_train_raw_path = base_path + "/2. Groundtruths/a. DRAC2022_ Image Quality Assessment_Training Labels.csv"
     elif TASK == 'c':
-        base_path = "/Users/markus/Downloads/DRAC2022/C. Diabetic Retinopathy Grading/"
+        base_path = DATA_ROOT + "C. Diabetic Retinopathy Grading/"
         x_train_raw_path = base_path + "/1. Original Images/a. Training Set/"
         y_train_raw_path = base_path + "/2. Groundtruths/a. DRAC2022_ Diabetic Retinopathy Grading_Training Labels.csv"
     else:
@@ -70,7 +71,7 @@ if __name__ == "__main__":
             torch.manual_seed(7)
 
             model = init_model(config.model, config.dropout)
-            device = torch.device("mps")
+            device = torch.device("cuda:0")
             model.to(device)
 
             dataloader_train, dataloader_valid = prepare_classification_dataset(base_path,
@@ -90,13 +91,14 @@ if __name__ == "__main__":
                 wandb.log({"train/error": sum(local_errs) / len(local_errs),
                            "validation/error": sum(local_val_errs) / len(local_val_errs)})
 
+                # TODO Store model weights using artifacts
 
     continue_sweep_id = None
 
     if not continue_sweep_id:
         sweep_id = wandb.sweep(sweep_config, entity="markuskarner", project="DRAC2022")
 
-        count = 1  # number of runs to execute
+        count = 5  # number of runs to execute
         wandb.agent(sweep_id, function=train, count=count)
     else:
         wandb.agent(continue_sweep_id, function=train, project="DRAC2022")
