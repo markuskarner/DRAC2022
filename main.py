@@ -3,9 +3,8 @@ import torch
 import wandb
 
 from torch import nn
-from torch import optim
 
-from helpers import init_model, update, evaluate, prepare_classification_dataset
+from helpers import init_model, update, evaluate, prepare_classification_dataset, init_optimizer
 
 if __name__ == "__main__":
 
@@ -34,7 +33,7 @@ if __name__ == "__main__":
     sweep_config = {
         "method": "random",
         "metric": {
-            "name": "quadratic weighted kappa",
+            "name": "validation/epoch quadratic weighted kappa",
             "goal": "maximize"
         },
         "parameters": {
@@ -55,17 +54,20 @@ if __name__ == "__main__":
                 "values": [0.0005, 0.005, 0.05]
             },
             "batch_size": {
-                "values": [128]
+                "values": [64]
             },
             "dropout": {
                 "values": [0., 0.3, 0.5, 0.8]
             },
+            "optimizer": {
+                "values": ["Adam", "AdamW"]
+            }
         }
     }
 
 
     def train():
-        with wandb.init():
+        with wandb.init() as run:
             config = wandb.config
 
             torch.manual_seed(7)
@@ -77,11 +79,14 @@ if __name__ == "__main__":
             dataloader_train, dataloader_valid = prepare_classification_dataset(base_path,
                                                                                 x_train_raw_path,
                                                                                 y_train_raw_path,
-                                                                                config["batch_size"])
+                                                                                config["batch_size"],
+                                                                                num_workers=8)
 
-            opt = optim.Adam(model.parameters(),
-                             lr=config["learning_rate"],
-                             weight_decay=config["weight_decay"])
+            opt = init_optimizer(model.parameters(),
+                                 config["learning_rate"],
+                                 config["weight_decay"],
+                                 config["optimizer"])
+
             ce = nn.CrossEntropyLoss()
 
             for epoch in range(config["epochs"]):
@@ -91,7 +96,15 @@ if __name__ == "__main__":
                 wandb.log({"train/error": sum(local_errs) / len(local_errs),
                            "validation/error": sum(local_val_errs) / len(local_val_errs)})
 
-                # TODO Store model weights using artifacts
+                if (epoch + 1) % 10 == 0:
+                    model_base_path = "/system/user/publicwork/student/karner/model-weights/"
+                    path = model_base_path + f"model_{run.name}_{epoch + 1}.pth"
+
+                    torch.save(model.state_dict(), path)
+
+                    artifact = wandb.Artifact(f'model_{run.name}', type='model')
+                    artifact.add_file(path)
+                    run.log_artifact(artifact)
 
     continue_sweep_id = None
 

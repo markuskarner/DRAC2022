@@ -13,7 +13,7 @@ from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from torch import nn, optim
 from sklearn.metrics import roc_auc_score
 
-from DRAC2022_zhuanjiao.evaluation.metric_classification import confusion_matrix, histogram, quadratic_weighted_kappa
+from DRAC2022_zhuanjiao.evaluation.metric_classification import quadratic_weighted_kappa
 
 
 def seed_worker(worker_id):
@@ -122,6 +122,21 @@ def init_model(model: str, dropout: float = 0.):
                                    flattened_size=1000,
                                    dropout=dropout)
 
+
+def init_optimizer(params, lr, weight_decay, optimizer: str = 'Adam'):
+
+    if optimizer == 'Adam':
+        opt = optim.Adam(params=params,
+                         lr=lr,
+                         weight_decay=weight_decay)
+    elif optimizer == 'AdamW':
+        opt = optim.AdamW(params=params,
+                          lr=lr,
+                          weight_decay=weight_decay)
+    else:
+        opt = None
+
+    return opt
 
 @torch.no_grad()
 def evaluate(network: nn.Module, data: DataLoader, metric: callable) -> list:
