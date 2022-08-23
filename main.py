@@ -39,7 +39,7 @@ if __name__ == "__main__":
         },
         "parameters": {
             "model": {
-                "values": ["ResNet50"]  # ConvNeXt_tiny or ResNet50
+                "values": ["ConvNeXt_tiny"]  # ConvNeXt_tiny or ResNet50
             },
             "task": {
                 "values": [TASK_DESC]
@@ -49,16 +49,16 @@ if __name__ == "__main__":
             },
             "learning_rate": {
                 "min": 0.00001,
-                "max": 0.001  # 0.1
+                "max": 0.0005  # 0.1
             },
             "weight_decay": {
                 "values": [0.0005, 0.005, 0.05]
             },
             "batch_size": {
-                "values": [16, 32, 64, 128]
+                "values": [128]
             },
             "dropout": {
-                "values": [0.]  # [0., 0.3, 0.4, 0.5]
+                "values": [0., 0.3, 0.5, 0.8]
             },
         }
     }

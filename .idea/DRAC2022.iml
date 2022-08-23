@@ -4,7 +4,7 @@
     <content url="file://$MODULE_DIR$">
       <excludeFolder url="file://$MODULE_DIR$/wandb" />
     </content>
-    <orderEntry type="jdk" jdkName="Remote Python 3.9.12 (/system/user/karner/.virtualenvs/DRAC2022/bin/python)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="Remote Python 3.9.12 (/system/apps/userenv/students/karner/miniconda3/bin/python)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
 </module>

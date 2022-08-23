@@ -8,7 +8,7 @@ import wandb
 import random
 
 from PIL import Image
-from torchvision import models
+from torchvision.models import resnet50, ResNet50_Weights, convnext_tiny, ConvNeXt_Tiny_Weights
 from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from torch import nn, optim
 from sklearn.metrics import roc_auc_score
@@ -112,9 +112,9 @@ class DracClassificationModel(nn.Module):
 def init_model(model: str, dropout: float = 0.):
     # TODO try bigger convNeXt models as well
     if model == 'ResNet50':
-        _model = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
+        _model = resnet50(weights=ResNet50_Weights.DEFAULT)
     elif model == 'ConvNeXt_tiny':
-        _model = models.convnext_tiny(weights=models.ConvNeXt_Tiny_Weights.DEFAULT)
+        _model = convnext_tiny(weights=ConvNeXt_Tiny_Weights.DEFAULT)
     else:
         raise Exception("Only ResNet50 and ConvNeXt_tiny allowed!")
 
