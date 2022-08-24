@@ -36,13 +36,13 @@ if __name__ == "__main__":
         },
         "parameters": {
             "model": {
-                "values": ["ConvNeXt_tiny"]  # ConvNeXt_tiny or ResNet50
+                "values": ["ConvNeXt_tiny", "ResNet50", "EfficientNet_B0"]
             },
             "task": {
                 "values": [TASK_DESC]
             },
             "epochs": {
-                "values": [20, 30]
+                "values": [10, 20, 30]
             },
             "learning_rate": {
                 "min": 0.00001,
@@ -59,6 +59,9 @@ if __name__ == "__main__":
             },
             "optimizer": {
                 "values": ["Adam", "AdamW"]
+            },
+            "use_weighted_ce": {
+                "values": [True, False]
             }
         }
     }
@@ -74,18 +77,24 @@ if __name__ == "__main__":
             device = torch.device("cuda:0")
             model.to(device)
 
-            dataloader_train, dataloader_valid = prepare_classification_dataset(base_path,
-                                                                                x_train_raw_path,
-                                                                                y_train_raw_path,
-                                                                                config["batch_size"],
-                                                                                num_workers=8)
+            dataloader_train, dataloader_valid, train_target = prepare_classification_dataset(base_path,
+                                                                                              x_train_raw_path,
+                                                                                              y_train_raw_path,
+                                                                                              config["batch_size"],
+                                                                                              num_workers=8)
 
             opt = init_optimizer(model.parameters(),
                                  config["learning_rate"],
                                  config["weight_decay"],
                                  config["optimizer"])
 
-            ce = nn.CrossEntropyLoss()
+            if config["use_weighted_ce"]:
+                ce_weight = torch.tensor(max(train_target.value_counts()) / train_target.value_counts()).flip(0)
+                ce_weight.to(device)
+            else:
+                ce_weight = None
+
+            ce = nn.CrossEntropyLoss(weight=ce_weight)
 
             for epoch in range(config["epochs"]):
                 local_errs = update(model, dataloader_train, ce, opt)

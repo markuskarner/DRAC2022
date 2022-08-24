@@ -53,5 +53,7 @@ if __name__ == "__main__":
                 output_argmax = torch.argmax(o).item()
                 output_list.append((i, output_argmax, probs[0].item(), probs[1].item(), probs[2].item()))
 
-            df = pd.DataFrame(output_list, columns=['case', 'class', 'P0', 'P1', 'P2'])
-            df.to_csv('/system/user/publicwork/student/karner/model_comic-sweep-1_30.csv', index=False)
+        df = pd.DataFrame(output_list, columns=['case', 'class', 'P0', 'P1', 'P2'])
+        df.to_csv('/system/user/publicwork/student/karner/model_comic-sweep-1_30.csv', index=False)
+
+        print(df.groupby(['class']).size())

@@ -9,6 +9,7 @@ import random
 
 from PIL import Image
 from torchvision.models import resnet50, ResNet50_Weights, convnext_tiny, ConvNeXt_Tiny_Weights
+from torchvision.models import efficientnet_b0, EfficientNet_B0_Weights
 from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from torch import nn, optim
 from sklearn.metrics import roc_auc_score
@@ -63,7 +64,7 @@ class DracClassificationDatasetTest(Dataset):
 
     def __getitem__(self, idx):
         img_file = self.images[idx]
-        img_id = int(img_file.split('.')[0])
+        img_id = img_file
 
         image = np.array(Image.open(self.img_path + img_file))
         image = np.repeat(image[..., np.newaxis], 3, axis=2)
@@ -110,13 +111,15 @@ class DracClassificationModel(nn.Module):
 
 
 def init_model(model: str, dropout: float = 0.):
-    # TODO try bigger convNeXt models as well
+
     if model == 'ResNet50':
         _model = resnet50(weights=ResNet50_Weights.DEFAULT)
     elif model == 'ConvNeXt_tiny':
         _model = convnext_tiny(weights=ConvNeXt_Tiny_Weights.DEFAULT)
+    elif model == 'EfficientNet_B0':
+        _model = efficientnet_b0(weights=EfficientNet_B0_Weights.DEFAULT)
     else:
-        raise Exception("Only ResNet50 and ConvNeXt_tiny allowed!")
+        raise Exception("Only ResNet50, ConvNeXt_tiny and EfficientNetB0 allowed!")
 
     return DracClassificationModel(_model,
                                    flattened_size=1000,
@@ -137,6 +140,7 @@ def init_optimizer(params, lr, weight_decay, optimizer: str = 'Adam'):
         opt = None
 
     return opt
+
 
 @torch.no_grad()
 def evaluate(network: nn.Module, data: DataLoader, metric: callable) -> list:
@@ -298,4 +302,4 @@ def prepare_classification_dataset(base_path: str,
     dataloader_valid = DataLoader(data_valid, batch_size=batch_size, shuffle=True, num_workers=num_workers,
                                   worker_init_fn=seed_worker, generator=g)
 
-    return dataloader_train, dataloader_valid
+    return dataloader_train, dataloader_valid, train_target
