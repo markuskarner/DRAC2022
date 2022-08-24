@@ -28,8 +28,6 @@ if __name__ == "__main__":
     else:
         raise Exception("Only Tasks a,b or c allowed!")
 
-    labels = pd.read_csv(y_train_raw_path)
-
     sweep_config = {
         "method": "random",
         "metric": {
@@ -111,7 +109,7 @@ if __name__ == "__main__":
     if not continue_sweep_id:
         sweep_id = wandb.sweep(sweep_config, entity="markuskarner", project="DRAC2022")
 
-        count = 5  # number of runs to execute
+        count = 20  # number of runs to execute
         wandb.agent(sweep_id, function=train, count=count)
     else:
         wandb.agent(continue_sweep_id, function=train, project="DRAC2022")
