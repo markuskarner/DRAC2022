@@ -4,7 +4,7 @@ import wandb
 
 from torch import nn
 
-from helpers import init_model, update, evaluate, prepare_classification_dataset, init_optimizer
+from helpers import init_model, update, evaluate, prepare_classification_dataset, init_optimizer, MaskedBCE
 
 if __name__ == "__main__":
 
@@ -36,7 +36,7 @@ if __name__ == "__main__":
         },
         "parameters": {
             "model": {
-                "values": ["ConvNeXt_tiny", "ResNet50", "EfficientNet_B0"]
+                "values": ["ConvNeXt_tiny"]  # , "ResNet50", "EfficientNet_B0"]
             },
             "task": {
                 "values": [TASK_DESC]
@@ -45,14 +45,14 @@ if __name__ == "__main__":
                 "values": [10, 20, 30]
             },
             "learning_rate": {
-                "min": 0.00001,
+                "min": 0.000001,
                 "max": 0.0005  # 0.1
             },
             "weight_decay": {
-                "values": [0.0005, 0.005, 0.05]
+                "values": [0., 0.0005, 0.005, 0.05]
             },
             "batch_size": {
-                "values": [64]
+                "values": [8]
             },
             "dropout": {
                 "values": [0., 0.3, 0.5, 0.8]
@@ -61,7 +61,10 @@ if __name__ == "__main__":
                 "values": ["Adam", "AdamW"]
             },
             "use_weighted_ce": {
-                "values": [True, False]
+                "values": [False]
+            },
+            "use_masked_bce": {
+                "values": [True]
             }
         }
     }
@@ -81,7 +84,9 @@ if __name__ == "__main__":
                                                                                               x_train_raw_path,
                                                                                               y_train_raw_path,
                                                                                               config["batch_size"],
-                                                                                              num_workers=8)
+                                                                                              config["model"],
+                                                                                              num_workers=8
+                                                                                              )
 
             opt = init_optimizer(model.parameters(),
                                  config["learning_rate"],
@@ -89,16 +94,18 @@ if __name__ == "__main__":
                                  config["optimizer"])
 
             if config["use_weighted_ce"]:
-                ce_weight = torch.tensor(max(train_target.value_counts()) / train_target.value_counts()).flip(0)
-                ce_weight.to(device)
+                ce_weight = torch.tensor(max(train_target.value_counts()) / train_target.value_counts()).flip(0).float()
+                ce_weight = ce_weight.to(device)
             else:
                 ce_weight = None
 
             ce = nn.CrossEntropyLoss(weight=ce_weight)
 
+            masked_bce = MaskedBCE()
+
             for epoch in range(config["epochs"]):
-                local_errs = update(model, dataloader_train, ce, opt)
-                local_val_errs = evaluate(model, dataloader_valid, ce)
+                local_errs = update(model, dataloader_train, masked_bce, opt)
+                local_val_errs = evaluate(model, dataloader_valid, masked_bce)
 
                 wandb.log({"train/error": sum(local_errs) / len(local_errs),
                            "validation/error": sum(local_val_errs) / len(local_val_errs)})
@@ -118,7 +125,7 @@ if __name__ == "__main__":
     if not continue_sweep_id:
         sweep_id = wandb.sweep(sweep_config, entity="markuskarner", project="DRAC2022")
 
-        count = 20  # number of runs to execute
+        count = 5  # number of runs to execute
         wandb.agent(sweep_id, function=train, count=count)
     else:
         wandb.agent(continue_sweep_id, function=train, project="DRAC2022")

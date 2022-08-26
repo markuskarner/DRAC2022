@@ -23,6 +23,23 @@ def seed_worker(worker_id):
     random.seed(worker_seed)
 
 
+def to_binary(x):
+    """
+    Use to map labels column of dataframe with 3 classes to binary
+    :param x: original label
+    :return: 3 values for 0vs1, 0vs2 and 1vs2. In the case of no comparison it returns None
+    """
+
+    if x == 0:
+        return 0, 0, None
+    elif x == 1:
+        return 1, None, 0
+    elif x == 2:
+        return None, 1, 1
+    else:
+        raise Exception("Only three classes supported!")
+
+
 class DracClassificationDatasetTrain(Dataset):
 
     def __init__(self,
@@ -33,17 +50,23 @@ class DracClassificationDatasetTrain(Dataset):
         self.img_path = images_folder
         self.transform = transform
 
+        # convert labels to binary
+        self.labels['0vs1'], self.labels['0vs2'], self.labels['1vs2'] = \
+            zip(*self.labels["image quality level"].map(to_binary))
+
     def __len__(self):
         return len(self.labels)
 
     def __getitem__(self, idx):
         img_file = self.labels.iloc[idx, 0]
-        label = self.labels.iloc[idx, 1]
+        # label = self.labels.iloc[idx, 1]  # use non binary classification
+        label = self.labels.iloc[idx, -3:]  # binary classification
+        mask = label.notna()
 
         image = np.array(Image.open(self.img_path + img_file))
         image = np.repeat(image[..., np.newaxis], 3, axis=2)
 
-        return self.transform(image), label
+        return self.transform(image), label, mask
 
     @property
     def targets(self):
@@ -152,13 +175,23 @@ def evaluate(network: nn.Module, data: DataLoader, metric: callable) -> list:
 
     device = next(network.parameters()).device
 
-    for batch_idx, (x, y) in enumerate(data):
-        x, y = x.float().to(device), y.to(device)
+    for batch_idx, (x, y, mask) in enumerate(data):
+        x, y, mask = x.float().to(device), y.to(device), mask.to(device)
+
+        metric.set_mask(mask)
 
         y_hat = network(x)
         errors.append(metric(y_hat, y).item())
 
-        y_scores = nn.functional.softmax(y_hat, 1).cpu().detach().numpy()
+        y_sigmoid = nn.functional.sigmoid(y_hat, 1).cpu().detach().numpy()
+
+        class_0 = (1 - y_sigmoid[:, 0]) + (1 - y_sigmoid[:, 1])
+        class_1 = (y_sigmoid[:, 0]) + (1 - y_sigmoid[:, 2])
+        class_2 = y_sigmoid[:, 1] + y_sigmoid[:, 2]
+
+        y_scores_for_softmax = np.vstack((class_0, class_1, class_2)).T
+
+        y_scores = nn.functional.softmax(y_scores_for_softmax, 1)
 
         y_array.append(y.cpu().detach().numpy())
         y_hat_array.append(torch.argmax(y_hat, dim=1).cpu().detach().numpy())
@@ -189,8 +222,10 @@ def update(network: nn.Module, data: DataLoader, loss: nn.Module,
 
     device = next(network.parameters()).device
 
-    for batch_idx, (x, y) in enumerate(data):
-        x, y = x.float().to(device), y.to(device)
+    for batch_idx, (x, y, mask) in enumerate(data):
+        x, y, mask = x.float().to(device), y.to(device), mask.to(device)
+
+        loss.set_mask(mask)  # set the mask for the current batch
 
         y_hat = network(x)
         output = loss(y_hat, y)
@@ -200,7 +235,15 @@ def update(network: nn.Module, data: DataLoader, loss: nn.Module,
 
         errors.append(output.item())
 
-        y_scores = nn.functional.softmax(y_hat, 1).cpu().detach().numpy()
+        y_sigmoid = nn.functional.sigmoid(y_hat, 1).cpu().detach().numpy()
+
+        class_0 = (1 - y_sigmoid[:, 0]) + (1 - y_sigmoid[:, 1])
+        class_1 = (y_sigmoid[:, 0]) + (1 - y_sigmoid[:, 2])
+        class_2 = y_sigmoid[:, 1] + y_sigmoid[:, 2]
+
+        y_scores_for_softmax = np.vstack((class_0, class_1, class_2)).T
+
+        y_scores = nn.functional.softmax(y_scores_for_softmax, 1)
 
         y_array.append(y.cpu().detach().numpy())
         y_hat_array.append(torch.argmax(y_hat, dim=1).cpu().detach().numpy())
@@ -220,7 +263,7 @@ def update(network: nn.Module, data: DataLoader, loss: nn.Module,
     return errors
 
 
-def prepare_transform(base_path: str, image_folder: str, calculate_mean_and_std: bool = False):
+def prepare_transform(base_path: str, image_folder: str, calculate_mean_and_std: bool = False, model: str = 'ResNet50'):
 
     if calculate_mean_and_std:
         images = image_folder  # b_x_train_raw_path
@@ -244,20 +287,36 @@ def prepare_transform(base_path: str, image_folder: str, calculate_mean_and_std:
 
     print(f'mean:{mean}, std:{std}')
 
-    transform = {
-        "train": transforms.Compose(
-            [transforms.ToTensor(),
-             transforms.Resize([256, 256]),
-             transforms.RandomCrop(224),
-             transforms.RandomVerticalFlip(),
-             transforms.Normalize(mean=mean,
-                                  std=std)]),
-        "test": transforms.Compose(
-            [transforms.ToTensor(),
-             transforms.Resize([224, 224]),
-             transforms.Normalize(mean=mean,
-                                  std=std)])
-    }
+    if model == 'ConvNeXt_tiny':
+        transform = {
+            "train": transforms.Compose(
+                [transforms.ToTensor(),
+                 transforms.Resize([600, 600]),
+                 transforms.RandomCrop(512),
+                 transforms.RandomVerticalFlip(),
+                 transforms.Normalize(mean=mean,
+                                      std=std)]),
+            "test": transforms.Compose(
+                [transforms.ToTensor(),
+                 transforms.Resize([512, 512]),
+                 transforms.Normalize(mean=mean,
+                                      std=std)])
+        }
+    else:
+        transform = {
+            "train": transforms.Compose(
+                [transforms.ToTensor(),
+                 transforms.Resize([256, 256]),
+                 transforms.RandomCrop(224),
+                 transforms.RandomVerticalFlip(),
+                 transforms.Normalize(mean=mean,
+                                      std=std)]),
+            "test": transforms.Compose(
+                [transforms.ToTensor(),
+                 transforms.Resize([224, 224]),
+                 transforms.Normalize(mean=mean,
+                                      std=std)])
+        }
 
     return transform
 
@@ -266,13 +325,14 @@ def prepare_classification_dataset(base_path: str,
                                    image_folder: str,
                                    labels_csv: str,
                                    batch_size: int,
+                                   model: str,
                                    num_workers: int = 4,
                                    task: str = 'b'):
 
     g = torch.Generator()
     g.manual_seed(7)
 
-    transform = prepare_transform(base_path, image_folder, False)
+    transform = prepare_transform(base_path, image_folder, False, model)
 
     data_train_valid = DracClassificationDatasetTrain(image_folder, labels_csv, transform["train"])
 
@@ -303,3 +363,27 @@ def prepare_classification_dataset(base_path: str,
                                   worker_init_fn=seed_worker, generator=g)
 
     return dataloader_train, dataloader_valid, train_target
+
+
+# Ideas from http://www.bioinf.jku.at/publications/2014/NIPS2014c.pdf
+class MaskedBCE(nn.Module):
+
+    def __init__(self):
+        super(MaskedBCE, self).__init__()
+        self.sigmoid = nn.Sigmoid()
+        self.mask = None
+
+    def forward(self, inputs, targets):
+
+        if self.mask is None:
+            raise Exception('Set mask before computing the loss.')
+
+        part1 = targets * torch.log(self.sigmoid(inputs) + self.eps)
+        part2 = (1 - targets) * torch.log(1 - self.sigmoid(inputs) + self.eps)
+        part3 = torch.add(part1, part2)
+        masked_bce = - torch.sum(self.mask * part3)  # mask out examples without experiment results
+
+        return masked_bce
+
+    def set_mask(self, mask):  # used to set the mask per batch
+        self.mask = mask
