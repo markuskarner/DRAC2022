@@ -36,7 +36,7 @@ if __name__ == "__main__":
         },
         "parameters": {
             "model": {
-                "values": ["ConvNeXt_tiny"]  # , "ResNet50", "EfficientNet_B0"]
+                "values": ["EfficientNet_B0"]  # , "ResNet50", "EfficientNet_B0", "ConvNeXt_tiny"
             },
             "task": {
                 "values": [TASK_DESC]

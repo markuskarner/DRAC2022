@@ -59,14 +59,14 @@ class DracClassificationDatasetTrain(Dataset):
 
     def __getitem__(self, idx):
         img_file = self.labels.iloc[idx, 0]
-        # label = self.labels.iloc[idx, 1]  # use non binary classification
-        label = self.labels.iloc[idx, -3:]  # binary classification
-        mask = label.notna()
+        label = self.labels.iloc[idx, 1]  # use non binary classification
+        label_bce = self.labels.iloc[idx, -3:]  # binary classification
+        mask_bce = label_bce.notna()
 
         image = np.array(Image.open(self.img_path + img_file))
         image = np.repeat(image[..., np.newaxis], 3, axis=2)
 
-        return self.transform(image), label, mask
+        return self.transform(image), label, torch.tensor(label_bce), torch.tensor(mask_bce)
 
     @property
     def targets(self):
@@ -175,26 +175,27 @@ def evaluate(network: nn.Module, data: DataLoader, metric: callable) -> list:
 
     device = next(network.parameters()).device
 
-    for batch_idx, (x, y, mask) in enumerate(data):
-        x, y, mask = x.float().to(device), y.to(device), mask.to(device)
+    for batch_idx, (x, y, y_bce, mask) in enumerate(data):
+        x, y, y_bce, mask = x.float().to(device), y.to(device), y_bce.float().to(device), mask.to(device)
 
         metric.set_mask(mask)
+        y_bce = torch.nan_to_num(y_bce)
 
         y_hat = network(x)
-        errors.append(metric(y_hat, y).item())
+        errors.append(metric(y_hat, y_bce).item())
 
-        y_sigmoid = nn.functional.sigmoid(y_hat, 1).cpu().detach().numpy()
+        y_sigmoid = torch.sigmoid(y_hat)
 
         class_0 = (1 - y_sigmoid[:, 0]) + (1 - y_sigmoid[:, 1])
         class_1 = (y_sigmoid[:, 0]) + (1 - y_sigmoid[:, 2])
         class_2 = y_sigmoid[:, 1] + y_sigmoid[:, 2]
 
-        y_scores_for_softmax = np.vstack((class_0, class_1, class_2)).T
+        y_hat_before_softmax = torch.vstack((class_0, class_1, class_2)).T
 
-        y_scores = nn.functional.softmax(y_scores_for_softmax, 1)
+        y_scores = nn.functional.softmax(y_hat_before_softmax, 1).cpu().detach().numpy()
 
         y_array.append(y.cpu().detach().numpy())
-        y_hat_array.append(torch.argmax(y_hat, dim=1).cpu().detach().numpy())
+        y_hat_array.append(torch.argmax(y_hat_before_softmax, dim=1).cpu().detach().numpy())
         y_scores_array.append(y_scores)
 
     kw_epoch = quadratic_weighted_kappa(np.hstack(y_array), np.hstack(y_hat_array))
@@ -222,31 +223,32 @@ def update(network: nn.Module, data: DataLoader, loss: nn.Module,
 
     device = next(network.parameters()).device
 
-    for batch_idx, (x, y, mask) in enumerate(data):
-        x, y, mask = x.float().to(device), y.to(device), mask.to(device)
+    for batch_idx, (x, y, y_bce, mask) in enumerate(data):
+        x, y, y_bce, mask = x.float().to(device), y.to(device), y_bce.float().to(device), mask.to(device)
 
         loss.set_mask(mask)  # set the mask for the current batch
+        y_bce = torch.nan_to_num(y_bce)  # set NANs to 0 at the beginning otherwise it will mess up backprop
 
         y_hat = network(x)
-        output = loss(y_hat, y)
+        output = loss(y_hat, y_bce)
         output.backward()
         opt.step()
         opt.zero_grad()
 
         errors.append(output.item())
 
-        y_sigmoid = nn.functional.sigmoid(y_hat, 1).cpu().detach().numpy()
+        y_sigmoid = torch.sigmoid(y_hat)
 
         class_0 = (1 - y_sigmoid[:, 0]) + (1 - y_sigmoid[:, 1])
         class_1 = (y_sigmoid[:, 0]) + (1 - y_sigmoid[:, 2])
         class_2 = y_sigmoid[:, 1] + y_sigmoid[:, 2]
 
-        y_scores_for_softmax = np.vstack((class_0, class_1, class_2)).T
+        y_hat_before_softmax = torch.vstack((class_0, class_1, class_2)).T
 
-        y_scores = nn.functional.softmax(y_scores_for_softmax, 1)
+        y_scores = nn.functional.softmax(y_hat_before_softmax, 1).cpu().detach().numpy()
 
         y_array.append(y.cpu().detach().numpy())
-        y_hat_array.append(torch.argmax(y_hat, dim=1).cpu().detach().numpy())
+        y_hat_array.append(torch.argmax(y_hat_before_softmax, dim=1).cpu().detach().numpy())
         y_scores_array.append(y_scores)
 
     kw_epoch = quadratic_weighted_kappa(np.hstack(y_array), np.hstack(y_hat_array))
@@ -372,6 +374,7 @@ class MaskedBCE(nn.Module):
         super(MaskedBCE, self).__init__()
         self.sigmoid = nn.Sigmoid()
         self.mask = None
+        self.eps = 1e-5  # for numerical stability
 
     def forward(self, inputs, targets):
 
@@ -381,6 +384,7 @@ class MaskedBCE(nn.Module):
         part1 = targets * torch.log(self.sigmoid(inputs) + self.eps)
         part2 = (1 - targets) * torch.log(1 - self.sigmoid(inputs) + self.eps)
         part3 = torch.add(part1, part2)
+
         masked_bce = - torch.sum(self.mask * part3)  # mask out examples without experiment results
 
         return masked_bce
