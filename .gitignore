@@ -152,7 +152,16 @@ cython_debug/
 .idea/
 
 # wandb
-wandb/
+*.swp
+.python-version
+wandb
+wandb-debug.log
+__pycache__
+.ipynb_checkpoints
+.DS_Store
+logs
+summary*
+run*
 
 # helper from challenge
 DRAC2022_zhuanjiao/
