@@ -36,7 +36,8 @@ if __name__ == "__main__":
         },
         "parameters": {
             "model": {
-                "values": ["EfficientNet_B0"]  # , "ResNet50", "EfficientNet_B0", "ConvNeXt_tiny"
+                # "ResNet50", "EfficientNet_B0", "ConvNeXt_tiny"
+                "values": ["EfficientNet_B0"]
             },
             "task": {
                 "values": [TASK_DESC]
@@ -125,7 +126,7 @@ if __name__ == "__main__":
     if not continue_sweep_id:
         sweep_id = wandb.sweep(sweep_config, entity="markuskarner", project="DRAC2022")
 
-        count = 5  # number of runs to execute
+        count = 10  # number of runs to execute
         wandb.agent(sweep_id, function=train, count=count)
     else:
         wandb.agent(continue_sweep_id, function=train, project="DRAC2022")

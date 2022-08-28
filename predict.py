@@ -11,6 +11,7 @@ if __name__ == "__main__":
     TASK = 'b'  # for now only b and c work (classification)
     TASK_DESC = "Classification B Quality"  # for logging only
     DATA_ROOT = "/system/user/publicdata/dracch/"  # "/Users/markus/Downloads/DRAC2022/"
+    MODEL = "EfficientNet_B0"
 
     # Prepare base paths
     if TASK == 'b':
@@ -23,17 +24,17 @@ if __name__ == "__main__":
     x_train_raw_path = base_path + "/1. Original Images/a. Training Set/"
     x_test_raw_path = base_path + "/1. Original Images/b. Testing Set/"
 
-    transform = prepare_transform(base_path, x_train_raw_path, False)
+    transform = prepare_transform(base_path, x_train_raw_path, False, model=MODEL)
     data_test = DracClassificationDatasetTest(x_test_raw_path, transform["test"])
-    dataloader_test = DataLoader(data_test, batch_size=16, num_workers=8)
+    dataloader_test = DataLoader(data_test, batch_size=8, num_workers=8)
 
     with wandb.init() as run:
-        artifact = run.use_artifact('markuskarner/DRAC2022/model_comic-sweep-1:v2', type='model')
+        artifact = run.use_artifact('markuskarner/DRAC2022/model_fanciful-sweep-5:v2', type='model')
         artifact_dir = artifact.download()
 
-        model_name = "/model_comic-sweep-1_30.pth"
+        model_name = "/model_fanciful-sweep-5_30.pth"
 
-        model = init_model("ConvNeXt_tiny", 0.)
+        model = init_model(MODEL, 0.)
         model.load_state_dict(torch.load(artifact_dir + model_name))
         model.eval()
 
@@ -49,11 +50,21 @@ if __name__ == "__main__":
             output = model(x)
 
             for o, i in zip(output, img_id):
-                probs = nn.functional.softmax(o, dim=0)
-                output_argmax = torch.argmax(o).item()
+
+                y_sigmoid = torch.sigmoid(o)
+
+                class_0 = (1 - y_sigmoid[0]) + (1 - y_sigmoid[1])
+                class_1 = (y_sigmoid[0]) + (1 - y_sigmoid[2])
+                class_2 = y_sigmoid[1] + y_sigmoid[2]
+
+                y_hat_before_softmax = torch.hstack((class_0, class_1, class_2)).T
+
+                probs = nn.functional.softmax(y_hat_before_softmax, 0)
+
+                output_argmax = torch.argmax(y_hat_before_softmax).item()
                 output_list.append((i, output_argmax, probs[0].item(), probs[1].item(), probs[2].item()))
 
         df = pd.DataFrame(output_list, columns=['case', 'class', 'P0', 'P1', 'P2'])
-        df.to_csv('/system/user/publicwork/student/karner/model_comic-sweep-1_30.csv', index=False)
+        df.to_csv('/system/user/publicwork/student/karner/fanciful-sweep-5_30.csv', index=False)
 
         print(df.groupby(['class']).size())
