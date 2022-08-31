@@ -9,7 +9,7 @@ import random
 
 from PIL import Image
 from torchvision.models import resnet50, ResNet50_Weights, convnext_tiny, ConvNeXt_Tiny_Weights
-from torchvision.models import efficientnet_b0, EfficientNet_B0_Weights
+from torchvision.models import efficientnet_b0, EfficientNet_B0_Weights, densenet121, DenseNet121_Weights
 from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from torch import nn, optim
 from sklearn.metrics import roc_auc_score
@@ -141,8 +141,10 @@ def init_model(model: str, dropout: float = 0.):
         _model = convnext_tiny(weights=ConvNeXt_Tiny_Weights.DEFAULT)
     elif model == 'EfficientNet_B0':
         _model = efficientnet_b0(weights=EfficientNet_B0_Weights.DEFAULT)
+    elif model == 'DenseNet121':
+        _model = densenet121(weights=DenseNet121_Weights.DEFAULT)
     else:
-        raise Exception("Only ResNet50, ConvNeXt_tiny and EfficientNetB0 allowed!")
+        raise Exception("Only ResNet50, ConvNeXt_tiny, DenseNet121 and EfficientNetB0 allowed!")
 
     return DracClassificationModel(_model,
                                    flattened_size=1000,
@@ -304,6 +306,21 @@ def prepare_transform(base_path: str, image_folder: str, calculate_mean_and_std:
                  transforms.Normalize(mean=mean,
                                       std=std)])
         }
+    elif model == 'EfficientNet_B0':
+        transform = {
+            "train": transforms.Compose(
+                [transforms.ToTensor(),
+                 transforms.Resize([620, 620]),
+                 transforms.RandomCrop(600),
+                 transforms.RandomVerticalFlip(),
+                 transforms.Normalize(mean=mean,
+                                      std=std)]),
+            "test": transforms.Compose(
+                [transforms.ToTensor(),
+                 transforms.Resize([600, 600]),
+                 transforms.Normalize(mean=mean,
+                                      std=std)])
+        }
     else:
         transform = {
             "train": transforms.Compose(
@@ -329,10 +346,11 @@ def prepare_classification_dataset(base_path: str,
                                    batch_size: int,
                                    model: str,
                                    num_workers: int = 4,
-                                   task: str = 'b'):
+                                   task: str = 'b',
+                                   seed: int = 7):
 
     g = torch.Generator()
-    g.manual_seed(7)
+    g.manual_seed(seed)
 
     transform = prepare_transform(base_path, image_folder, False, model)
 

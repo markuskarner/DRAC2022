@@ -8,8 +8,9 @@ from helpers import init_model, update, evaluate, prepare_classification_dataset
 
 if __name__ == "__main__":
 
-    TASK = 'b'  # for now only b and c work (classification)
-    TASK_DESC = "Classification B Quality"  # for logging only
+    TASK = 'c'  # for now only b and c work (classification)
+    # "Classification B Quality" "Classification C Grading"
+    TASK_DESC = "Classification C Grading"  # for logging only
     DATA_ROOT = "/system/user/publicdata/dracch/"  # "/Users/markus/Downloads/DRAC2022/"
 
     # Prepare paths
@@ -37,26 +38,26 @@ if __name__ == "__main__":
         "parameters": {
             "model": {
                 # "ResNet50", "EfficientNet_B0", "ConvNeXt_tiny"
-                "values": ["EfficientNet_B0"]
+                "values": ["DenseNet121", "EfficientNet_B0"]
             },
             "task": {
                 "values": [TASK_DESC]
             },
             "epochs": {
-                "values": [10, 20, 30]
+                "values": [20, 30, 40, 50]
             },
             "learning_rate": {
-                "min": 0.000001,
-                "max": 0.0005  # 0.1
+                "min": 0.0000001,
+                "max": 0.0001
             },
             "weight_decay": {
                 "values": [0., 0.0005, 0.005, 0.05]
             },
             "batch_size": {
-                "values": [8]
+                "values": [16]
             },
             "dropout": {
-                "values": [0., 0.3, 0.5, 0.8]
+                "values": [0., 0.3]
             },
             "optimizer": {
                 "values": ["Adam", "AdamW"]
@@ -66,6 +67,9 @@ if __name__ == "__main__":
             },
             "use_masked_bce": {
                 "values": [True]
+            },
+            "seed": {
+                "values": [7, 934, 314]
             }
         }
     }
@@ -75,7 +79,7 @@ if __name__ == "__main__":
         with wandb.init() as run:
             config = wandb.config
 
-            torch.manual_seed(7)
+            torch.manual_seed(config["seed"])
 
             model = init_model(config.model, config.dropout)
             device = torch.device("cuda:0")
@@ -86,7 +90,8 @@ if __name__ == "__main__":
                                                                                               y_train_raw_path,
                                                                                               config["batch_size"],
                                                                                               config["model"],
-                                                                                              num_workers=8
+                                                                                              num_workers=8,
+                                                                                              seed=config["seed"]
                                                                                               )
 
             opt = init_optimizer(model.parameters(),
@@ -94,13 +99,13 @@ if __name__ == "__main__":
                                  config["weight_decay"],
                                  config["optimizer"])
 
-            if config["use_weighted_ce"]:
-                ce_weight = torch.tensor(max(train_target.value_counts()) / train_target.value_counts()).flip(0).float()
-                ce_weight = ce_weight.to(device)
-            else:
-                ce_weight = None
-
-            ce = nn.CrossEntropyLoss(weight=ce_weight)
+            # if config["use_weighted_ce"]:
+            #     ce_weight = torch.tensor(max(train_target.value_counts()) / train_target.value_counts()).flip(0).float()
+            #     ce_weight = ce_weight.to(device)
+            # else:
+            #     ce_weight = None
+            #
+            # ce = nn.CrossEntropyLoss(weight=ce_weight)
 
             masked_bce = MaskedBCE()
 
@@ -126,7 +131,7 @@ if __name__ == "__main__":
     if not continue_sweep_id:
         sweep_id = wandb.sweep(sweep_config, entity="markuskarner", project="DRAC2022")
 
-        count = 10  # number of runs to execute
+        count = 50  # number of runs to execute
         wandb.agent(sweep_id, function=train, count=count)
     else:
         wandb.agent(continue_sweep_id, function=train, project="DRAC2022")

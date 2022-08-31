@@ -8,8 +8,9 @@ from helpers import prepare_transform, DracClassificationDatasetTest, DataLoader
 
 if __name__ == "__main__":
 
-    TASK = 'b'  # for now only b and c work (classification)
-    TASK_DESC = "Classification B Quality"  # for logging only
+    TASK = 'c'  # for now only b and c work (classification)
+    # "Classification B Quality" "Classification C Grading"
+    TASK_DESC = "Classification C Grading"  # for logging only
     DATA_ROOT = "/system/user/publicdata/dracch/"  # "/Users/markus/Downloads/DRAC2022/"
     MODEL = "EfficientNet_B0"
 
@@ -29,10 +30,10 @@ if __name__ == "__main__":
     dataloader_test = DataLoader(data_test, batch_size=8, num_workers=8)
 
     with wandb.init() as run:
-        artifact = run.use_artifact('markuskarner/DRAC2022/model_fanciful-sweep-5:v2', type='model')
+        artifact = run.use_artifact('markuskarner/DRAC2022/model_trim-sweep-19:v1', type='model')
         artifact_dir = artifact.download()
 
-        model_name = "/model_fanciful-sweep-5_30.pth"
+        model_name = "/model_trim-sweep-19_20.pth"
 
         model = init_model(MODEL, 0.)
         model.load_state_dict(torch.load(artifact_dir + model_name))
@@ -49,7 +50,7 @@ if __name__ == "__main__":
 
             output = model(x)
 
-            for o, i in zip(output, img_id):
+            for o, i, _x in zip(output, img_id, x):
 
                 y_sigmoid = torch.sigmoid(o)
 
@@ -64,7 +65,9 @@ if __name__ == "__main__":
                 output_argmax = torch.argmax(y_hat_before_softmax).item()
                 output_list.append((i, output_argmax, probs[0].item(), probs[1].item(), probs[2].item()))
 
+                # wandb.log({"prediction": [wandb.Image(_x, caption=output_argmax)]})
+
         df = pd.DataFrame(output_list, columns=['case', 'class', 'P0', 'P1', 'P2'])
-        df.to_csv('/system/user/publicwork/student/karner/fanciful-sweep-5_30.csv', index=False)
+        df.to_csv('/system/user/publicwork/student/karner/model_trim-sweep-19_20.csv', index=False)
 
         print(df.groupby(['class']).size())
