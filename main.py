@@ -15,15 +15,15 @@ if __name__ == "__main__":
 
     # Prepare paths
     if TASK == 'a':
-        base_path = DATA_ROOT + "A. Segmentation/"
+        base_path = DATA_ROOT + "A. Segmentation"
         x_train_raw_path = base_path + "/1. Original Images/a. Training Set/"
         y_train_raw_path = base_path + "/2. Groundtruths/a. Training Set/"
     elif TASK == 'b':
-        base_path = DATA_ROOT + "B. Image Quality Assessment/"
+        base_path = DATA_ROOT + "B. Image Quality Assessment"
         x_train_raw_path = base_path + "/1. Original Images/a. Training Set/"
         y_train_raw_path = base_path + "/2. Groundtruths/a. DRAC2022_ Image Quality Assessment_Training Labels.csv"
     elif TASK == 'c':
-        base_path = DATA_ROOT + "C. Diabetic Retinopathy Grading/"
+        base_path = DATA_ROOT + "C. Diabetic Retinopathy Grading"
         x_train_raw_path = base_path + "/1. Original Images/a. Training Set/"
         y_train_raw_path = base_path + "/2. Groundtruths/a. DRAC2022_ Diabetic Retinopathy Grading_Training Labels.csv"
     else:
@@ -85,13 +85,21 @@ if __name__ == "__main__":
             device = torch.device("cuda:0")
             model.to(device)
 
+            if config["task"] == "Classification B Quality":
+                task = 'b'
+            elif config["task"] == "Classification C Grading":
+                task = 'c'
+            else:
+                raise Exception("Wrong Task Description!")
+
             dataloader_train, dataloader_valid, train_target = prepare_classification_dataset(base_path,
                                                                                               x_train_raw_path,
                                                                                               y_train_raw_path,
                                                                                               config["batch_size"],
                                                                                               config["model"],
                                                                                               num_workers=8,
-                                                                                              seed=config["seed"]
+                                                                                              seed=config["seed"],
+                                                                                              task=task
                                                                                               )
 
             opt = init_optimizer(model.parameters(),

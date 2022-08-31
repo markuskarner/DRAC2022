@@ -45,14 +45,23 @@ class DracClassificationDatasetTrain(Dataset):
     def __init__(self,
                  images_folder: str,
                  labels_csv: str,
-                 transform: transforms.Compose):
+                 transform: transforms.Compose,
+                 task: str):
+
         self.labels = pd.read_csv(labels_csv)
         self.img_path = images_folder
         self.transform = transform
 
+        if task == 'b':
+            label = 'image quality level'
+        elif task == 'c':
+            label = 'DR grade'
+        else:
+            raise Exception("only b and c allowed!")
+
         # convert labels to binary
         self.labels['0vs1'], self.labels['0vs2'], self.labels['1vs2'] = \
-            zip(*self.labels["image quality level"].map(to_binary))
+            zip(*self.labels[label].map(to_binary))
 
     def __len__(self):
         return len(self.labels)
@@ -267,9 +276,9 @@ def update(network: nn.Module, data: DataLoader, loss: nn.Module,
     return errors
 
 
-def prepare_transform(base_path: str, image_folder: str, calculate_mean_and_std: bool = False, model: str = 'ResNet50'):
+def prepare_transform(base_path: str, image_folder: str, model: str = 'ResNet50'):
 
-    if calculate_mean_and_std:
+    if not os.path.exists(base_path + "mean.pt"):
         images = image_folder  # b_x_train_raw_path
         ids = set()
         for file in os.listdir(images):
@@ -352,9 +361,9 @@ def prepare_classification_dataset(base_path: str,
     g = torch.Generator()
     g.manual_seed(seed)
 
-    transform = prepare_transform(base_path, image_folder, False, model)
+    transform = prepare_transform(base_path, image_folder, model)
 
-    data_train_valid = DracClassificationDatasetTrain(image_folder, labels_csv, transform["train"])
+    data_train_valid = DracClassificationDatasetTrain(image_folder, labels_csv, transform["train"], task)
 
     if task == 'b':
         data_train, data_valid = torch.utils.data.random_split(data_train_valid, [600, 65], generator=g)

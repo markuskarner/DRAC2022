@@ -25,7 +25,7 @@ if __name__ == "__main__":
     x_train_raw_path = base_path + "/1. Original Images/a. Training Set/"
     x_test_raw_path = base_path + "/1. Original Images/b. Testing Set/"
 
-    transform = prepare_transform(base_path, x_train_raw_path, False, model=MODEL)
+    transform = prepare_transform(base_path, x_train_raw_path, model=MODEL)
     data_test = DracClassificationDatasetTest(x_test_raw_path, transform["test"])
     dataloader_test = DataLoader(data_test, batch_size=8, num_workers=8)
 
