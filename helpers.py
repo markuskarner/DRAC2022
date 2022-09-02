@@ -14,7 +14,7 @@ from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from torch import nn, optim
 from sklearn.metrics import roc_auc_score
 
-from DRAC2022_zhuanjiao.evaluation.metric_classification import quadratic_weighted_kappa
+from metric_classification import quadratic_weighted_kappa
 
 
 def seed_worker(worker_id):
