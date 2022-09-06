@@ -1,6 +1,7 @@
 import wandb
 import torch
 import pandas as pd
+from tqdm import tqdm
 
 from torch import nn
 
@@ -17,8 +18,10 @@ if __name__ == "__main__":
     # Prepare base paths
     if TASK == 'b':
         base_path = DATA_ROOT + "B. Image Quality Assessment/"
+        id_to_label = {0: 'Poor quality level', 1: 'Good quality level', 2: 'Excellent quality level'}
     elif TASK == 'c':
         base_path = DATA_ROOT + "C. Diabetic Retinopathy Grading/"
+        id_to_label = {0: 'Normal', 1: 'NPDR', 2: 'PDR'}
     else:
         raise Exception("Only Tasks b and c allowed!")
 
@@ -29,14 +32,20 @@ if __name__ == "__main__":
     data_test = DracClassificationDatasetTest(x_test_raw_path, transform["test"])
     dataloader_test = DataLoader(data_test, batch_size=8, num_workers=8)
 
-    with wandb.init() as run:
-        artifact = run.use_artifact('markuskarner/DRAC2022/model_trim-sweep-19:v1', type='model')
+    with wandb.init(project='DRAC2022_predictions') as run:
+        artifact = run.use_artifact('markuskarner/DRAC2022/model_sandy-sweep-31:v0', type='model')
         artifact_dir = artifact.download()
 
-        model_name = "/model_trim-sweep-19_20.pth"
+        # create an artifact for all raw test images
+        raw_data_at = wandb.Artifact('raw_data_1000', type="raw_data")
+
+        # create a table with columns we want to track/compare
+        predictions_table = wandb.Table(columns=['case', 'image','class', 'P0', 'P1', 'P2'])
+
+        model_name = 'model_sandy-sweep-31_10'
 
         model = init_model(MODEL, 0.)
-        model.load_state_dict(torch.load(artifact_dir + model_name))
+        model.load_state_dict(torch.load(artifact_dir + f"/{model_name}.pth"))
         model.eval()
 
         device = torch.device("cuda:0")
@@ -68,6 +77,24 @@ if __name__ == "__main__":
                 # wandb.log({"prediction": [wandb.Image(_x, caption=output_argmax)]})
 
         df = pd.DataFrame(output_list, columns=['case', 'class', 'P0', 'P1', 'P2'])
-        df.to_csv('/system/user/publicwork/student/karner/model_trim-sweep-19_20.csv', index=False)
+        df.to_csv(f'/system/user/publicwork/student/karner/AILS_Students@JKU_{model_name}.csv', index=False)
+
+        for i in tqdm(range(len(df))):
+            image_name = df.loc[i]['case']
+            label = df.loc[i]['class']
+            P0 = df.loc[i]['P0']
+            P1 = df.loc[i]['P1']
+            P2 = df.loc[i]['P2']
+            full_path = x_test_raw_path + image_name
+
+            # Append each example as a new row in Table.
+            predictions_table.add_data(image_name, wandb.Image(full_path), id_to_label[label], P0, P1, P2)
+
+        raw_data_at.add(predictions_table,'predictions')
+        run.log_artifact(raw_data_at)
+
+        predictions_csv = wandb.Artifact(f'csv_for_upload', type='csv')
+        predictions_csv.add_file(f'/system/user/publicwork/student/karner/AILS_Students@JKU_{model_name}.csv')
+        wandb.log_artifact(predictions_csv)
 
         print(df.groupby(['class']).size())
