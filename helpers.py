@@ -46,11 +46,13 @@ class DracClassificationDatasetTrain(Dataset):
                  images_folder: str,
                  labels_csv: str,
                  transform: transforms.Compose,
-                 task: str):
+                 task: str,
+                 use_for_attention: bool = False):
 
         self.labels = pd.read_csv(labels_csv)
         self.img_path = images_folder
         self.transform = transform
+        self.use_for_attention = use_for_attention
 
         if task == 'b':
             label = 'image quality level'
@@ -68,14 +70,20 @@ class DracClassificationDatasetTrain(Dataset):
 
     def __getitem__(self, idx):
         img_file = self.labels.iloc[idx, 0]
-        label = self.labels.iloc[idx, 1]  # use non binary classification
+        label = self.labels.iloc[idx, 1]  # use non-binary classification
         label_bce = self.labels.iloc[idx, -3:]  # binary classification
         mask_bce = label_bce.notna()
 
-        image = np.array(Image.open(self.img_path + img_file))
-        image = np.repeat(image[..., np.newaxis], 3, axis=2)
+        if not self.use_for_attention:
+            image = np.array(Image.open(self.img_path + img_file))
+            image = np.repeat(image[..., np.newaxis], 3, axis=2)
+            return self.transform(image), label, torch.tensor(label_bce), torch.tensor(mask_bce)
 
-        return self.transform(image), label, torch.tensor(label_bce), torch.tensor(mask_bce)
+        else:
+            image_patches = torch.load(self.img_path + img_file.split('.')[0] + '.pt')
+            return image_patches, label
+
+
 
     @property
     def targets(self):
@@ -86,10 +94,12 @@ class DracClassificationDatasetTest(Dataset):
 
     def __init__(self,
                  images_folder: str,
-                 transform: transforms.Compose):
+                 transform: transforms.Compose,
+                 use_for_attention: bool = False):
         self.img_path = images_folder
         self.images = [file for file in os.listdir(images_folder)]
         self.transform = transform
+        self.use_for_attention = use_for_attention
 
     def __len__(self):
         return len(self.images)
@@ -98,10 +108,14 @@ class DracClassificationDatasetTest(Dataset):
         img_file = self.images[idx]
         img_id = img_file
 
-        image = np.array(Image.open(self.img_path + img_file))
-        image = np.repeat(image[..., np.newaxis], 3, axis=2)
+        if not self.use_for_attention:
+            image = np.array(Image.open(self.img_path + img_file))
+            image = np.repeat(image[..., np.newaxis], 3, axis=2)
 
-        return self.transform(image), img_id
+            return self.transform(image), img_id
+        else:
+            image_patches = torch.load(self.img_path + img_file + '.pt')
+            return image_patches, img_id
 
 
 class DracClassificationModel(nn.Module):
@@ -143,6 +157,12 @@ class DracClassificationModel(nn.Module):
 
 
 def init_model(model: str, dropout: float = 0.):
+    """
+    Initialises a model with default weights from torchvision models
+    :param model: One of the following models are supported: ResNet50, ConvNeXt_tiny, DenseNet121 and EfficientNet_B0
+    :param dropout: float between 0 and 1
+    :return: torchvision model with default weights
+    """
 
     if model == 'ResNet50':
         _model = resnet50(weights=ResNet50_Weights.DEFAULT)
@@ -153,7 +173,7 @@ def init_model(model: str, dropout: float = 0.):
     elif model == 'DenseNet121':
         _model = densenet121(weights=DenseNet121_Weights.DEFAULT)
     else:
-        raise Exception("Only ResNet50, ConvNeXt_tiny, DenseNet121 and EfficientNetB0 allowed!")
+        raise Exception("Only ResNet50, ConvNeXt_tiny, DenseNet121 and EfficientNet_B0 allowed!")
 
     return DracClassificationModel(_model,
                                    flattened_size=1000,
@@ -356,14 +376,16 @@ def prepare_classification_dataset(base_path: str,
                                    model: str,
                                    num_workers: int = 4,
                                    task: str = 'b',
-                                   seed: int = 7):
+                                   seed: int = 7,
+                                   use_for_attention: bool = False):
 
     g = torch.Generator()
     g.manual_seed(seed)
 
     transform = prepare_transform(base_path, image_folder, model)
 
-    data_train_valid = DracClassificationDatasetTrain(image_folder, labels_csv, transform["train"], task)
+    data_train_valid = DracClassificationDatasetTrain(image_folder, labels_csv, transform["train"],
+                                                      task, use_for_attention)
 
     if task == 'b':
         data_train, data_valid = torch.utils.data.random_split(data_train_valid, [600, 65], generator=g)
