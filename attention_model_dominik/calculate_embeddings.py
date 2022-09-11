@@ -48,20 +48,18 @@ def calc_embeddings(network: nn.Module, data: DataLoader):
     network.eval()
     _device = next(network.parameters()).device
 
-    tmp_outputs, tmp_labels, tmp_img_names = [], [], []
+    tmp_outputs, tmp_img_names = [], []
 
     embeddings = {}
 
     with torch.no_grad():
         for i, (inputs, labels, img_name) in enumerate(tqdm(data)):
-            inputs, labels = inputs.to(_device), labels.to(_device)
+            inputs = inputs.to(_device)
             output = network(inputs)
             tmp_outputs.append(output.cpu().numpy())
-            tmp_labels.append(labels.cpu().numpy())
             tmp_img_names.append(img_name)
 
     outs = np.concatenate(tmp_outputs)
-    labs = np.concatenate(tmp_labels).ravel()
     names = np.concatenate(tmp_img_names).ravel()
 
     for idx, name in enumerate(names):
@@ -74,7 +72,7 @@ def calc_embeddings(network: nn.Module, data: DataLoader):
     for key, val in tqdm(embeddings.items()):
         save_path = os.path.join(
                         base_path,
-                        "embeddings-efficientnet-train",
+                        "embeddings-ConvNeXt_tiny-glorious-sweep-3-test",
                         f"{key}.pt"
                     )
 
@@ -93,7 +91,7 @@ def channel_copy(data: torch.tensor):
 if __name__ == '__main__':
 
     with wandb.init(project='DRAC2022_predictions') as run:
-        artifact = run.use_artifact('markuskarner/DRAC2022/model_fanciful-sweep-5:v2', type='model')
+        artifact = run.use_artifact('markuskarner/DRAC2022/model:v2', type='model')
         artifact_dir = artifact.download()
 
 
@@ -105,14 +103,16 @@ if __name__ == '__main__':
         # Prepare paths
         if TASK == 'b':
             base_path = DATA_ROOT + "B. Image Quality Assessment"
-            x_train_raw_path = base_path + "/patches_train/"
-            y_train_raw_path = base_path + "/patches_train/annotation.csv"
         elif TASK == 'c':
             base_path = DATA_ROOT + "C. Diabetic Retinopathy Grading"
-            x_train_raw_path = base_path + "/patches_train/"
-            y_train_raw_path = base_path + "/patches_train/annotation.csv"
         else:
             raise Exception("Only Tasks b and c allowed!")
+
+        x_train_raw_path = base_path + "/patches_train/"
+        y_train_raw_path = base_path + "/patches_train/annotation.csv"
+
+        x_test_raw_path = base_path + "/patches_test/"
+        y_test_raw_path = base_path + "/patches_test/annotation.csv"
 
         dataloader_params = {
             "batch_size": 8,
@@ -133,8 +133,8 @@ if __name__ == '__main__':
             )])
 
         data_set = DRACPatchDataset(
-            annotations_file=y_train_raw_path,
-            img_dir=x_train_raw_path,
+            annotations_file=y_test_raw_path,
+            img_dir=x_test_raw_path,
             transform=patch_transforms
         )
 
@@ -143,8 +143,8 @@ if __name__ == '__main__':
             **dataloader_params
         )
 
-        model = init_model(model="EfficientNet_B0", dropout=0)
-        model_name = 'model_fanciful-sweep-5_30'
+        model = init_model(model="ConvNeXt_tiny", dropout=0)
+        model_name = 'model_glorious-sweep-3_10'
 
         model.load_state_dict(torch.load(artifact_dir + f"/{model_name}.pth"))
         model.eval()

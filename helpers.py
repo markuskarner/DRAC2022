@@ -14,6 +14,8 @@ from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from torch import nn, optim
 from sklearn.metrics import roc_auc_score
 
+from attention_model_dominik.attention_model import prepare_attention_model
+from attention_model_dominik.dataset import DRACEmbeddingDataset
 from metric_classification import quadratic_weighted_kappa
 
 
@@ -172,8 +174,13 @@ def init_model(model: str, dropout: float = 0.):
         _model = efficientnet_b0(weights=EfficientNet_B0_Weights.DEFAULT)
     elif model == 'DenseNet121':
         _model = densenet121(weights=DenseNet121_Weights.DEFAULT)
+    elif model == 'Attention - EfficientNet_B0':
+        return prepare_attention_model(model, num_classes=3)
+    elif model == 'Attention - ConvNeXt_tiny':
+        return prepare_attention_model(model, num_classes=3)
     else:
-        raise Exception("Only ResNet50, ConvNeXt_tiny, DenseNet121 and EfficientNet_B0 allowed!")
+        raise Exception("Only ResNet50, ConvNeXt_tiny, DenseNet121, EfficientNet_B0 "
+                        "and 'Attention - EfficientNet_B0' allowed!")
 
     return DracClassificationModel(_model,
                                    flattened_size=1000,
@@ -384,8 +391,23 @@ def prepare_classification_dataset(base_path: str,
 
     transform = prepare_transform(base_path, image_folder, model)
 
-    data_train_valid = DracClassificationDatasetTrain(image_folder, labels_csv, transform["train"],
-                                                      task, use_for_attention)
+    if model == "Attention - EfficientNet_B0":
+        embedding_dir = "embeddings-efficientnet-train"
+
+        data_train_valid = DRACEmbeddingDataset(
+            annotations_file=labels_csv,
+            emb_dir=os.path.join(base_path, embedding_dir)
+        )
+    elif model == "Attention - ConvNeXt_tiny":
+        embedding_dir = "embeddings-ConvNeXt_tiny-glorious-sweep-3-train"
+
+        data_train_valid = DRACEmbeddingDataset(
+            annotations_file=labels_csv,
+            emb_dir=os.path.join(base_path, embedding_dir)
+        )
+    else:
+        data_train_valid = DracClassificationDatasetTrain(image_folder, labels_csv, transform["train"],
+                                                          task, use_for_attention)
 
     if task == 'b':
         data_train, data_valid = torch.utils.data.random_split(data_train_valid, [600, 65], generator=g)

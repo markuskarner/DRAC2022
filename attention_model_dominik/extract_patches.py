@@ -1,10 +1,10 @@
-import argparse
 import os
-
 import numpy as np
+import pandas as pd
+import glob
+
 from tqdm import tqdm
 from PIL import Image
-
 
 def extract_patches(
         input_dir: str,
@@ -57,11 +57,41 @@ def extract_patches(
                     img.save(new_img_path)
 
 
+def create_annotation_file_for_patches(patches_path, labels_path, test_file: bool = False):
+    def image_name_from_patch(patch_id: str):
+        return patch_id.split('_')[0] + '.png'
+
+    labels = pd.read_csv(labels_path)
+
+    files = [os.path.basename(x) for x in glob.glob(patches_path + "*.png", )]
+    df = pd.DataFrame(files)
+
+    if test_file:
+        df['class'] = -1
+        annotation_df = df
+    else:
+        df['image name'] = df[0].map(image_name_from_patch)
+        annotation_df = pd.merge(df, labels, on='image name', how='inner')
+        annotation_df.drop(columns='image name', inplace=True)
+
+    annotation_df.to_csv(patches_path + 'annotation.csv', index=False)
+
+
 if __name__ == '__main__':
 
+    exit()
+
+    create_annotation_file_for_patches(
+        patches_path='/system/user/publicdata/dracch/C. Diabetic Retinopathy Grading/patches_test/',
+        labels_path='/system/user/publicdata/dracch/B. Image Quality Assessment/2. Groundtruths/a. DRAC2022_ Image Quality Assessment_Training Labels.csv',
+        test_file=True
+    )
+
+    exit()
+
     extract_patches(
-        input_dir="/system/user/publicdata/dracch/C. Diabetic Retinopathy Grading/1. Original Images/a. Training Set",
-        output_dir="/system/user/publicdata/dracch/C. Diabetic Retinopathy Grading/patches_train",
+        input_dir="/system/user/publicdata/dracch/C. Diabetic Retinopathy Grading/1. Original Images/b. Testing Set",
+        output_dir="/system/user/publicdata/dracch/C. Diabetic Retinopathy Grading/patches_test",
         num_patches_x=2,
         num_patches_y=2
     )

@@ -167,39 +167,38 @@ def train():
         "num_workers": 0,
         "pin_memory": True
     }
-    optimizer_params = {
-        "lr": 4.37e-4,
-        "weight_decay": 5e-2,
-        "betas": (0.9, 0.999)
-    }
 
-    other_params = {
-        "epochs": 25,
-        "use_weighted_sampling": True,
-        "dropout": 0.8
-    }
+    task = 'c'  # for now only b and c work (classification)
+    # "Classification B Quality" "Classification C Grading"
+    task_desc = "Classification C Grading"  # for logging only
+    data_root = "/system/user/publicdata/dracch/"  # "/Users/markus/Downloads/DRAC2022/"
 
-    class_names = ["Poor quality level (0)", "Good quality level (1)", "Excellent quality level (2)"]
 
-    # with wandb.init(project="DRAC2022", config={**dataloader_params, **optimizer_params}):
-    run = wandb.init(project="DRAC2022")#, config={**dataloader_params, **optimizer_params, **other_params})
+    if task == 'b':
+        base_path = data_root + "B. Image Quality Assessment"
+        x_train_raw_path = base_path + "/1. Original Images/a. Training Set/"
+        y_train_raw_path = base_path + "/2. Groundtruths/a. DRAC2022_ Image Quality Assessment_Training Labels.csv"
+        class_names = ["Poor quality level (0)", "Good quality level (1)", "Excellent quality level (2)"]
+    elif task == 'c':
+        base_path = data_root + "C. Diabetic Retinopathy Grading"
+        x_train_raw_path = base_path + "/1. Original Images/a. Training Set/"
+        y_train_raw_path = base_path + "/2. Groundtruths/a. DRAC2022_ Diabetic Retinopathy Grading_Training Labels.csv"
+        class_names = ["Normal (0)", "NPDR(1)", "PDR (2)"]
+    else:
+        raise Exception('Only Task a and b allowed.')
+
+    run = wandb.init(entity="markuskarner", project="DRAC2022")
     config = wandb.config
-    run.tags += (config["model_name"],)
+    run.tags += (config["model"])
 
-    miccai_base_dir = os.path.join(os.path.expanduser("~"), "Downloads", "MICCAI")
-    quality_dir = os.path.join(miccai_base_dir, "B. Image Quality Assessment")
-    ckpt_dir = os.path.join(quality_dir, "ckpts")
-
-    if config["model_name"] == "Attention - EfficientNet_v2":
-        embedding_dir = "embeddings-eff-net-train"
-    elif config["model_name"] == "Attention - ResNet50":
-        embedding_dir = "embeddings-resnet-train"
-    elif config["model_name"] == "Attention - ConvNext":
-        embedding_dir = "embeddings-convnext"
+    if config["model_name"] == "Attention - EfficientNet_B0":
+        embedding_dir = "embeddings-efficientnet-train"
+    else:
+        raise Exception('No valid model_name.')
 
     train_set = DRACEmbeddingDataset(
-        annotations_file=os.path.join(quality_dir, "train.csv"),
-        emb_dir=os.path.join(quality_dir, "1. Original Images", embedding_dir)
+        annotations_file=os.path.join(y_train_raw_path),
+        emb_dir=os.path.join(base_path, embedding_dir)
     )
 
     val_set = DRACEmbeddingDataset(
@@ -313,24 +312,24 @@ if __name__ == '__main__':
             "goal": "maximize"
         },
         "parameters": {
-            "model_name": {
-                "values": ["Attention - EfficientNet_v2", "Attention - ResNet50", "Attention - ConvNext"]
+            "model": {
+                "values": ["Attention - EfficientNet_B0"]
             },
             "task": {
-                "values": ["Quality Assessment"]
+                "values": ["Classification C Grading"]
             },
             "epochs": {
                 "values": [15, 25, 30]
             },
             "lr": {
-                "min": 0.00001,
-                "max": 0.0009
+                "min": 0.000001,
+                "max": 0.0005
             },
             "weight_decay": {
                 "values": [0.0005, 0.005, 0.05]
             },
             "batch_size": {
-                "values": [32]  # , 32, 64]
+                "values": [16,32,64,128]  # , 32, 64]
             },
             "use_weighted_sampling": {
                 "values": [True, False]

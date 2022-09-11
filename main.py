@@ -5,6 +5,7 @@ import wandb
 from torch import nn
 
 from helpers import init_model, update, evaluate, prepare_classification_dataset, init_optimizer, MaskedBCE
+from helpers_attention import update_attention, evaluate_attention
 
 if __name__ == "__main__":
 
@@ -37,14 +38,14 @@ if __name__ == "__main__":
         },
         "parameters": {
             "model": {
-                # "ResNet50", "EfficientNet_B0", "ConvNeXt_tiny"
-                "values": ["DenseNet121", "EfficientNet_B0"]
+                # "ResNet50", "EfficientNet_B0", "ConvNeXt_tiny", Attention - EfficientNet_B0, Attention - ConvNeXt_tiny
+                "values": ["Attention - ConvNeXt_tiny"]
             },
             "task": {
                 "values": [TASK_DESC]
             },
             "epochs": {
-                "values": [20, 30, 40, 50]
+                "values": [10, 20, 30, 40]
             },
             "learning_rate": {
                 "min": 0.0000001,
@@ -54,19 +55,19 @@ if __name__ == "__main__":
                 "values": [0., 0.0005, 0.005, 0.05]
             },
             "batch_size": {
-                "values": [16]
+                "values": [16, 64]
             },
             "dropout": {
-                "values": [0., 0.3]
+                "values": [0., 0.3, 0.6, 0.8]
             },
             "optimizer": {
                 "values": ["Adam", "AdamW"]
             },
             "use_weighted_ce": {
-                "values": [False]
+                "values": [True]
             },
             "use_masked_bce": {
-                "values": [True]
+                "values": [False]
             },
             "seed": {
                 "values": [7, 934, 314]
@@ -107,19 +108,24 @@ if __name__ == "__main__":
                                  config["weight_decay"],
                                  config["optimizer"])
 
-            # if config["use_weighted_ce"]:
-            #     ce_weight = torch.tensor(max(train_target.value_counts()) / train_target.value_counts()).flip(0).float()
-            #     ce_weight = ce_weight.to(device)
-            # else:
-            #     ce_weight = None
-            #
-            # ce = nn.CrossEntropyLoss(weight=ce_weight)
+            if config["use_weighted_ce"]:
+                ce_weight = torch.tensor(max(train_target.value_counts()) / train_target.value_counts()).flip(0).float()
+                ce_weight = ce_weight.to(device)
+            else:
+                ce_weight = None
 
-            masked_bce = MaskedBCE()
+            ce = nn.CrossEntropyLoss(weight=ce_weight)
+
+            if config["use_masked_bce"]:
+                ce = MaskedBCE()
 
             for epoch in range(config["epochs"]):
-                local_errs = update(model, dataloader_train, masked_bce, opt)
-                local_val_errs = evaluate(model, dataloader_valid, masked_bce)
+                if config["model"] == 'Attention - EfficientNet_B0' or config["model"] == 'Attention - ConvNeXt_tiny':
+                    local_errs = update_attention(model, dataloader_train, ce, opt)
+                    local_val_errs = evaluate_attention(model, dataloader_valid, ce)
+                else:
+                    local_errs = update(model, dataloader_train, ce, opt)
+                    local_val_errs = evaluate(model, dataloader_valid, ce)
 
                 wandb.log({"train/error": sum(local_errs) / len(local_errs),
                            "validation/error": sum(local_val_errs) / len(local_val_errs)})

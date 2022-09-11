@@ -1,20 +1,16 @@
-from typing import Dict, Tuple
+from typing import Tuple, Dict
 
 import numpy as np
 import torch
 from torch import nn
 from torch import optim
 from torch.utils.data import DataLoader
-from torchvision import models
-from Attention import Attention
 
 from metric_classification import quadratic_weighted_kappa, roc_auc_score
-
-torch.manual_seed(1806)
-torch.cuda.manual_seed(1806)
+import wandb
 
 @torch.enable_grad()
-def update(
+def update_attention(
         network: nn.Module,
         data: DataLoader,
         loss: nn.Module,
@@ -49,7 +45,7 @@ def update(
     for inputs, labels in data:
         opt.zero_grad()
         inputs, labels = inputs.to(device), labels.to(device)
-        output, _, _ = network.forward(inputs)
+        output, hat, A = network.forward(inputs)
         batch_loss = loss(output, labels)
         tmp_ce.append(batch_loss.item())
         batch_loss.backward()
@@ -63,24 +59,22 @@ def update(
     y_true = np.concatenate(tmp_labels).ravel()
     y_hat = np.argmax(np.concatenate(tmp_outputs), axis=1)
 
-    kappa = quadratic_weighted_kappa(
-        y_true,
-        y_hat)
-    auc = roc_auc(
-        y_true,
-        np.concatenate(tmp_scores))
+    kw_epoch = quadratic_weighted_kappa(y_true, y_hat)
+    wandb.log({"train/epoch quadratic weighted kappa": kw_epoch})
 
-    metrics_log = {
-        "train/ce-loss": torch.tensor(tmp_ce).mean().item(),
-        "train/kappa": kappa,
-        "train/auc": auc
-    }
+    auc_epoch = roc_auc_score(y_true, np.concatenate(tmp_scores), average="macro", multi_class='ovo')
+    wandb.log({"train/epoch macro-AUC-ovo": auc_epoch})
 
-    return metrics_log, y_true, y_hat
+    wandb.log({"train/conf_mat": wandb.plot.confusion_matrix(probs=None,
+                                                                  y_true=y_true,
+                                                                  preds=y_hat,
+                                                                  class_names=["1", "2", "3"])})
+
+    return tmp_ce
 
 
 @torch.no_grad()
-def evaluate(
+def evaluate_attention(
         network: nn.Module,
         data: DataLoader,
         loss: nn.Module
@@ -114,7 +108,7 @@ def evaluate(
     with torch.no_grad():
         for inputs, labels in data:
             inputs, labels = inputs.to(device), labels.to(device)
-            output, _, _ = network(inputs)
+            output, hat, A = network(inputs)
             tmp_ce.append(loss(output, labels).item())
             tmp_outputs.append(output.cpu().numpy())
             tmp_labels.append(labels.cpu().numpy())
@@ -123,42 +117,16 @@ def evaluate(
 
     y_true = np.concatenate(tmp_labels).ravel()
     y_hat = np.argmax(np.concatenate(tmp_outputs), axis=1)
-    kappa = quadratic_weighted_kappa(
-        y_true,
-        y_hat)
-    auc = roc_auc_score(
-        y_true,
-        np.concatenate(tmp_scores))
-    metrics_log = {
-        "validation/ce-loss": torch.tensor(tmp_ce).mean().item(),
-        "validation/kappa": kappa,
-        "validation/auc": auc
-    }
 
-    return metrics_log, y_true, y_hat
+    kw_epoch = quadratic_weighted_kappa(y_true, y_hat)
+    wandb.log({"validation/epoch quadratic weighted kappa": kw_epoch})
 
+    auc_epoch = roc_auc_score(y_true, np.concatenate(tmp_scores), average="macro", multi_class='ovo')
+    wandb.log({"validation/epoch macro-AUC-ovo": auc_epoch})
 
-def prepare_attention_model(
-        model_name: str,
-        num_classes: int
-) -> nn.Module:
+    wandb.log({"validation/conf_mat": wandb.plot.confusion_matrix(probs=None,
+                                                                  y_true=y_true,
+                                                                  preds=y_hat,
+                                                                  class_names=["1", "2", "3"])})
 
-    if model_name == "Attention - ResNet50":
-        model = Attention(L=2048, num_classes=num_classes)
-
-    elif model_name == "Attention - EfficientNet_v2":
-        model = Attention(L=1280, num_classes=num_classes)
-
-    elif model_name == "Attention - EfficientNet_B0":
-        model = Attention(L=1000, num_classes=num_classes)
-
-    elif model_name == "SwinTransformer":
-        raise ValueError(f"Model: {model_name} not supported!")
-
-    elif model_name == "Attention - ConvNeXt_tiny":
-        model = Attention(L=1000, num_classes=num_classes)
-
-    else:
-        raise ValueError(f"Model: {model_name} not supported!")
-
-    return model
+    return tmp_ce

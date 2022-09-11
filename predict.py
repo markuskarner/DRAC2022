@@ -5,6 +5,7 @@ from tqdm import tqdm
 
 from torch import nn
 
+from attention_model_dominik.dataset import DRACEmbeddingPredDataset
 from helpers import prepare_transform, DracClassificationDatasetTest, DataLoader, init_model
 
 if __name__ == "__main__":
@@ -13,7 +14,8 @@ if __name__ == "__main__":
     # "Classification B Quality" "Classification C Grading"
     TASK_DESC = "Classification C Grading"  # for logging only
     DATA_ROOT = "/system/user/publicdata/dracch/"  # "/Users/markus/Downloads/DRAC2022/"
-    MODEL = "EfficientNet_B0"
+    MODEL = "EfficientNet_B0" # "Attention - ConvNeXt_tiny"
+    USE_ATTENTION_MODEL = False
 
     # Prepare base paths
     if TASK == 'b':
@@ -25,15 +27,22 @@ if __name__ == "__main__":
     else:
         raise Exception("Only Tasks b and c allowed!")
 
-    x_train_raw_path = base_path + "/1. Original Images/a. Training Set/"
-    x_test_raw_path = base_path + "/1. Original Images/b. Testing Set/"
+    x_train_raw_path = base_path + "1. Original Images/a. Training Set/"
+    x_test_raw_path = base_path + "1. Original Images/b. Testing Set/"
 
-    transform = prepare_transform(base_path, x_train_raw_path, model=MODEL)
-    data_test = DracClassificationDatasetTest(x_test_raw_path, transform["test"])
-    dataloader_test = DataLoader(data_test, batch_size=8, num_workers=8)
+    # Prepare dataloader
+    if MODEL == "Attention - ConvNeXt_tiny":
+        embedding_dir = base_path + "embeddings-ConvNeXt_tiny-glorious-sweep-3-test/"
+        data_test = DRACEmbeddingPredDataset(emb_dir=embedding_dir)
+        dataloader_test = DataLoader(data_test, batch_size=8, num_workers=8)
+    else:
+        transform = prepare_transform(base_path, x_train_raw_path, model=MODEL)
+        data_test = DracClassificationDatasetTest(x_test_raw_path, transform["test"])
+        dataloader_test = DataLoader(data_test, batch_size=8, num_workers=8)
 
+    # start prediction
     with wandb.init(project='DRAC2022_predictions') as run:
-        artifact = run.use_artifact('markuskarner/DRAC2022/model_sandy-sweep-31:v0', type='model')
+        artifact = run.use_artifact('markuskarner/DRAC2022/model_revived-sweep-12:v0', type='model')
         artifact_dir = artifact.download()
 
         # create an artifact for all raw test images
@@ -42,7 +51,7 @@ if __name__ == "__main__":
         # create a table with columns we want to track/compare
         predictions_table = wandb.Table(columns=['case', 'image','class', 'P0', 'P1', 'P2'])
 
-        model_name = 'model_sandy-sweep-31_10'
+        model_name = 'model_revived-sweep-12_10'
 
         model = init_model(MODEL, 0.)
         model.load_state_dict(torch.load(artifact_dir + f"/{model_name}.pth"))
@@ -59,22 +68,26 @@ if __name__ == "__main__":
 
             output = model(x)
 
-            for o, i, _x in zip(output, img_id, x):
+            if USE_ATTENTION_MODEL:
+                output = output[0]
 
-                y_sigmoid = torch.sigmoid(o)
+            for o, i in zip(output, img_id):
 
-                class_0 = (1 - y_sigmoid[0]) + (1 - y_sigmoid[1])
-                class_1 = (y_sigmoid[0]) + (1 - y_sigmoid[2])
-                class_2 = y_sigmoid[1] + y_sigmoid[2]
+                if USE_ATTENTION_MODEL:
+                    y_hat_before_softmax = o
+                else:
+                    y_sigmoid = torch.sigmoid(o)
 
-                y_hat_before_softmax = torch.hstack((class_0, class_1, class_2)).T
+                    class_0 = (1 - y_sigmoid[0]) + (1 - y_sigmoid[1])
+                    class_1 = (y_sigmoid[0]) + (1 - y_sigmoid[2])
+                    class_2 = y_sigmoid[1] + y_sigmoid[2]
+
+                    y_hat_before_softmax = torch.hstack((class_0, class_1, class_2)).T
 
                 probs = nn.functional.softmax(y_hat_before_softmax, 0)
 
                 output_argmax = torch.argmax(y_hat_before_softmax).item()
                 output_list.append((i, output_argmax, probs[0].item(), probs[1].item(), probs[2].item()))
-
-                # wandb.log({"prediction": [wandb.Image(_x, caption=output_argmax)]})
 
         df = pd.DataFrame(output_list, columns=['case', 'class', 'P0', 'P1', 'P2'])
         df.to_csv(f'/system/user/publicwork/student/karner/AILS_Students@JKU_{model_name}.csv', index=False)
